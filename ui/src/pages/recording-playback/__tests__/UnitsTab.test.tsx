@@ -108,9 +108,12 @@ describe("UnitsTab", () => {
 
     // Detail card should now show with Follow button and stats
     expect(screen.getByText("Follow")).toBeTruthy();
-    expect(screen.getByText("KILLS")).toBeTruthy();
-    expect(screen.getByText("DEATHS")).toBeTruthy();
-    expect(screen.getByText("MARKERS")).toBeTruthy();
+    expect(screen.getByText(/kills/i)).toBeTruthy();
+    expect(screen.getByText(/deaths/i)).toBeTruthy();
+    expect(screen.getByText(/markers/i)).toBeTruthy();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByText(/weight/i)).toBeNull();
+    expect(screen.queryByText("Stamina")).toBeNull();
   });
 
   it("clicking Follow button in detail card follows the entity", () => {
@@ -545,7 +548,7 @@ describe("UnitsTab", () => {
     fireEvent.click(screen.getByText("Marker Player"));
 
     // Admin section should show with blacklist button
-    expect(screen.getByText("ADMIN ACTIONS")).toBeTruthy();
+    expect(screen.getByText(/admin actions/i)).toBeTruthy();
     expect(screen.getByText(/Blacklist 3 markers/)).toBeTruthy();
   });
 
@@ -610,7 +613,7 @@ describe("UnitsTab", () => {
 
     // Follow button should show but no admin section
     expect(screen.getByText("Follow")).toBeTruthy();
-    expect(screen.queryByText("ADMIN ACTIONS")).toBeNull();
+    expect(screen.queryByText(/admin actions/i)).toBeNull();
     expect(screen.queryByTitle("Toggle marker blacklist")).toBeNull();
   });
 
@@ -670,7 +673,7 @@ describe("UnitsTab", () => {
     fireEvent.click(screen.getByText("Spammer"));
 
     // Stats grid should show 0 visible markers (blacklisted)
-    const markersStat = screen.getByText("MARKERS").parentElement!;
+    const markersStat = screen.getByText(/^markers$/i).parentElement!;
     expect(markersStat.textContent).toContain("0");
 
     // But the restore button still shows the total
@@ -704,6 +707,6 @@ describe("UnitsTab", () => {
 
     // Follow should show, but no admin section (no markers)
     expect(screen.getByText("Follow")).toBeTruthy();
-    expect(screen.queryByText("ADMIN ACTIONS")).toBeNull();
+    expect(screen.queryByText(/admin actions/i)).toBeNull();
   });
 });

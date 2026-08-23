@@ -58,13 +58,15 @@ export interface EntityMarkerState {
 // --------------- Briefing markers ---------------
 
 export interface BriefingMarkerDef {
-  shape: "ICON" | "ELLIPSE" | "RECTANGLE" | "POLYLINE";
+  shape: "ICON" | "ELLIPSE" | "RECTANGLE" | "POLYLINE" | "POLYGON";
   type: string;
   color: string;
   text?: string;
   side: string;
   size?: [number, number];
   brush?: string;
+  /** Leaflet dashArray, used for the simple-range ring under approximate coverage. */
+  dashArray?: string;
   /** Which layer group to add this marker to. Defaults to "briefingMarkers". */
   layer?: "briefingMarkers" | "systemMarkers" | "projectileMarkers";
 }

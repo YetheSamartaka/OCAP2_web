@@ -11,6 +11,11 @@ import type {
   Side,
 } from "../types";
 import type { DecoderStrategy } from "./decoder.interface";
+import {
+  extractRadioPropagation,
+  parseAcreSettingsPayload,
+  parseTfarSettingsPayload,
+} from "../radioPropagation";
 
 // ───────── Legacy JSON shape ─────────
 
@@ -304,6 +309,26 @@ function convertEvent(raw: RawJsonEvent): EventDef | null {
         unitName: hackData?.[0] ?? "",
       };
     }
+    case "inventorySnapshot":
+    case "medicalSnapshot":
+    case "staminaSnapshot":
+    case "radioSnapshot": {
+      // Either a full snapshot or a diff against an earlier frame; both are keyed by unitId.
+      const payload = raw[2];
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+      if (typeof (payload as { unitId?: unknown }).unitId !== "number") return null;
+      return { frameNum, type, payload } as EventDef;
+    }
+    case "tfarSettings": {
+      const payload = parseTfarSettingsPayload(raw[2]);
+      if (!payload) return null;
+      return { frameNum, type, payload };
+    }
+    case "acreSettings": {
+      const payload = parseAcreSettingsPayload(raw[2]);
+      if (!payload) return null;
+      return { frameNum, type, payload };
+    }
     default:
       // Unknown event types: skip
       return null;
@@ -369,9 +394,11 @@ export class JsonDecoder implements DecoderStrategy {
     const data: RawJsonOperation = JSON.parse(text);
 
     const entities: EntityDef[] = (data.entities ?? []).map(convertEntity);
-    const events: EventDef[] = (data.events ?? [])
-      .map(convertEvent)
-      .filter((e): e is EventDef => e !== null);
+    const extracted = extractRadioPropagation(
+      (data.events ?? [])
+        .map(convertEvent)
+        .filter((e): e is EventDef => e !== null),
+    );
     const markers: MarkerDef[] = (data.Markers ?? [])
       .map(convertMarker)
       .filter((m): m is MarkerDef => m !== null);
@@ -392,11 +419,13 @@ export class JsonDecoder implements DecoderStrategy {
       captureDelayMs: (data.captureDelay ?? 1) * 1000,
       chunkCount: 1,
       entities,
-      events,
+      events: extracted.events,
       markers,
       times,
       extensionVersion: data.extensionVersion,
       addonVersion: data.addonVersion,
+      radioPropagation: extracted.radioPropagation,
+      acrePropagation: extracted.acrePropagation,
     };
   }
 

@@ -3,6 +3,9 @@ import { Unit } from "./entities/unit";
 import { Vehicle } from "./entities/vehicle";
 import { GameEvent } from "./events/gameEvent";
 import { HitKilledEvent } from "./events/hitKilledEvent";
+import { PlayerSnapshotEvent } from "./events/playerSnapshotEvent";
+import { applySnapshotDiff, isSnapshotDiff } from "../data/snapshotDiff";
+import type { PlayerSnapshotPayload, PlayerSnapshotType } from "../data/types";
 
 /**
  * Manages all mission events for a playback session.
@@ -12,9 +15,22 @@ import { HitKilledEvent } from "./events/hitKilledEvent";
 export class EventManager {
   private events: GameEvent[] = [];
   private frameIndex: Map<number, GameEvent[]> = new Map();
+  private playerSnapshots = new Map<number, Map<PlayerSnapshotType, PlayerSnapshotEvent[]>>();
 
   /** Add an event and index it by frame number. */
   addEvent(event: GameEvent): void {
+    if (event instanceof PlayerSnapshotEvent) {
+      let unitSnapshots = this.playerSnapshots.get(event.unitId);
+      if (!unitSnapshots) {
+        unitSnapshots = new Map();
+        this.playerSnapshots.set(event.unitId, unitSnapshots);
+      }
+      const type = event.type as PlayerSnapshotType;
+      const series = unitSnapshots.get(type);
+      if (series) series.push(event);
+      else unitSnapshots.set(type, [event]);
+      return;
+    }
     this.events.push(event);
 
     const existing = this.frameIndex.get(event.frameNum);
@@ -40,6 +56,51 @@ export class EventManager {
   /** Return all registered events. */
   getAll(): GameEvent[] {
     return this.events;
+  }
+
+  /**
+   * Rebuild every player snapshot that was recorded as a diff into a full snapshot.
+   * Must run once after all events are added and before the card reads them.
+   */
+  reconstructPlayerSnapshots(): void {
+    for (const byType of this.playerSnapshots.values()) {
+      for (const series of byType.values()) {
+        series.sort((a, b) => a.frameNum - b.frameNum);
+        let previous: PlayerSnapshotPayload | undefined;
+        for (const event of series) {
+          if (isSnapshotDiff(event.raw)) {
+            // Without a base the keyframe was lost, so the diff is all we know.
+            event.payload = previous
+              ? applySnapshotDiff(previous, event.raw)
+              : ({ unitId: event.raw.unitId, ...event.raw.set } as PlayerSnapshotPayload);
+          } else {
+            event.payload = event.raw;
+          }
+          previous = event.payload;
+        }
+      }
+    }
+  }
+
+  /** Frame of a player's first snapshot of a type, so the UI can explain an empty card. */
+  getFirstPlayerSnapshotFrame(unitId: number, type: PlayerSnapshotType): number | undefined {
+    return this.playerSnapshots.get(unitId)?.get(type)?.[0]?.frameNum;
+  }
+
+  /** Latest snapshot of each requested type for a player at the given frame. */
+  getPlayerSnapshots(unitId: number, frame: number): Map<PlayerSnapshotType, PlayerSnapshotEvent> {
+    const result = new Map<PlayerSnapshotType, PlayerSnapshotEvent>();
+    const unitSnapshots = this.playerSnapshots.get(unitId);
+    if (!unitSnapshots) return result;
+    for (const [type, series] of unitSnapshots) {
+      for (let i = series.length - 1; i >= 0; i--) {
+        if (series[i].frameNum <= frame) {
+          result.set(type, series[i]);
+          break;
+        }
+      }
+    }
+    return result;
   }
 
   /**
@@ -150,5 +211,6 @@ export class EventManager {
   clear(): void {
     this.events = [];
     this.frameIndex = new Map();
+    this.playerSnapshots = new Map();
   }
 }

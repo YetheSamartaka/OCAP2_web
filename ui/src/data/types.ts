@@ -1,4 +1,5 @@
 import type { ArmaCoord } from "../utils/coordinates";
+import type { AcreRadioPropagation, TfarRadioPropagation } from "./radioPropagation";
 
 /** Faction side. */
 export type Side = "WEST" | "EAST" | "GUER" | "CIV";
@@ -101,6 +102,143 @@ export interface TerminalHackEventDef {
   unitName: string;
 }
 
+export type PlayerSnapshotType =
+  | "inventorySnapshot"
+  | "medicalSnapshot"
+  | "staminaSnapshot"
+  | "radioSnapshot";
+
+export interface GearItem {
+  class: string;
+  name: string;
+  picture?: string;
+  count?: number;
+}
+
+export interface GearContainer extends GearItem {
+  items: GearItem[];
+}
+
+export interface InventorySnapshot {
+  unitId: number;
+  playerUid?: string;
+  reason?: "periodic" | "death" | string;
+  /** Raw Arma mass units. */
+  massUnits?: number;
+  load: number;
+  uniform: GearContainer;
+  vest: GearContainer;
+  backpack: GearContainer;
+  headgear: GearItem;
+  goggles: GearItem;
+  weapons: Array<GearItem & { slot: string; attachments: GearItem[] }>;
+  magazines: Array<GearItem & { totalRounds?: number; loadedCount?: number }>;
+  assignedItems: GearItem[];
+}
+
+/**
+ * Anything a medical mod attaches to, inserts into or injects at a body part.
+ * Deliberately untyped beyond a label so a new treatment recorded by the addon
+ * shows up without a UI change.
+ */
+export interface TreatmentItem {
+  kind: string;
+  name: string;
+  count?: number;
+  detail?: string;
+}
+
+export interface MedicalBodyPart {
+  part: string;
+  damage?: number;
+  items: TreatmentItem[];
+}
+
+export interface MedicalLogEntry {
+  time: string;
+  text: string;
+}
+
+export interface MedicalSnapshot {
+  unitId: number;
+  playerUid?: string;
+  reason?: "periodic" | "death" | string;
+  vanilla: Record<string, unknown>;
+  /** In ACE body part order: head, body, leftarm, rightarm, leftleg, rightleg. */
+  bodyParts?: MedicalBodyPart[];
+  /** Treatments that are not tied to a body part, such as medications in the system. */
+  treatments?: TreatmentItem[];
+  /** ACE activity log, already localized the way the medical menu prints it. */
+  activity?: MedicalLogEntry[];
+  /** ACE quick view (pulse, BP, response checks). */
+  quickView?: MedicalLogEntry[];
+  ace?: Record<string, unknown>;
+  kat?: Record<string, unknown>;
+}
+
+export interface StaminaSnapshot {
+  unitId: number;
+  playerUid?: string;
+  reason?: "periodic" | "death" | string;
+  vanilla: Record<string, number>;
+  ace?: Record<string, number>;
+}
+
+export interface RadioSnapshotEntry extends GearItem {
+  mod: string;
+  type: "SW" | "LR" | "SR" | string;
+  channel: number;
+  frequency: number;
+  code: string;
+  /** Read from the radio's own config where the mod publishes one. */
+  rangeMeters: number;
+  additional: boolean;
+  /** ACRE models propagation instead of a range, so it reports transmit power. */
+  powerMilliwatts?: number;
+  active?: boolean;
+}
+
+export interface RadioSnapshot {
+  unitId: number;
+  playerUid?: string;
+  reason?: "periodic" | "death" | string;
+  radios: RadioSnapshotEntry[];
+}
+
+export type PlayerSnapshotPayload =
+  | InventorySnapshot
+  | MedicalSnapshot
+  | StaminaSnapshot
+  | RadioSnapshot;
+
+/**
+ * Follow-up snapshots record only what changed since the same player's previous
+ * snapshot of that kind, identified by its frame number.
+ */
+export interface PlayerSnapshotDiff {
+  unitId: number;
+  diffOf: number;
+  set: Record<string, unknown>;
+  unset?: string[];
+}
+
+export type RawPlayerSnapshot = PlayerSnapshotPayload | PlayerSnapshotDiff;
+
+export interface PlayerSnapshotEventDef {
+  type: PlayerSnapshotType;
+  payload: RawPlayerSnapshot;
+}
+
+export interface TfarSettingsEventDef {
+  type: "tfarSettings";
+  payload: TfarRadioPropagation;
+}
+
+export interface AcreSettingsEventDef {
+  type: "acreSettings";
+  payload: AcreRadioPropagation;
+}
+
 export type EventDef = { frameNum: number } & (
   | HitKilledEventDef
   | ConnectEventDef
@@ -109,6 +247,9 @@ export type EventDef = { frameNum: number } & (
   | GeneralEventDef
   | CapturedEventDef
   | TerminalHackEventDef
+  | PlayerSnapshotEventDef
+  | TfarSettingsEventDef
+  | AcreSettingsEventDef
 );
 
 // --------------- Markers ---------------
@@ -117,7 +258,7 @@ export type EventDef = { frameNum: number } & (
 export const FRAME_FOREVER = -1;
 
 export interface MarkerDef {
-  shape: "ICON" | "ELLIPSE" | "RECTANGLE" | "POLYLINE";
+  shape: "ICON" | "ELLIPSE" | "RECTANGLE" | "POLYLINE" | "POLYGON";
   type: string;
   text?: string;
   side: string;
@@ -148,6 +289,10 @@ export interface Manifest {
   times: Array<{ frameNum: number; systemTimeUtc: string; date?: string; timeMultiplier?: number }>;
   extensionVersion?: string;
   addonVersion?: string;
+  /** TFAR coverage settings stamped by the recorder, or omitted on older files. */
+  radioPropagation?: TfarRadioPropagation;
+  /** ACRE coverage settings stamped by the recorder, or omitted on older files. */
+  acrePropagation?: AcreRadioPropagation;
 }
 
 /** A decoded chunk: entity ID -> array of states for this chunk's frames. */
@@ -194,6 +339,8 @@ export interface WorldConfig {
   hasTopoDark?: boolean;
   hasTopoRelief?: boolean;
   hasColorRelief?: boolean;
+  hasHeightmap?: boolean;
+  hasDem?: boolean;
   attribution?: string;
 }
 

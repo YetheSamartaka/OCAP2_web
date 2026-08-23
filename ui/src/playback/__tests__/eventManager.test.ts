@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { GameEvent } from "../events/gameEvent";
 import { HitKilledEvent } from "../events/hitKilledEvent";
 import { ConnectEvent } from "../events/connectEvent";
+import { PlayerSnapshotEvent } from "../events/playerSnapshotEvent";
 import {
   getCounterStateAtFrame,
   type CounterState,
@@ -361,6 +362,133 @@ describe("EventManager", () => {
       const events = mgr.getEventsAtFrame(500);
       expect(events).toHaveLength(1);
       expect(events[0].frameNum).toBe(500);
+    });
+  });
+
+  describe("player snapshots", () => {
+    it("returns the latest snapshot at or before the playback frame", () => {
+      const first = new PlayerSnapshotEvent(10, "inventorySnapshot", 1, {
+        unitId: 7,
+        playerUid: "uid",
+        reason: "periodic",
+        weightKg: 12,
+        load: 0.2,
+        uniform: { class: "", name: "", items: [] },
+        vest: { class: "", name: "", items: [] },
+        backpack: { class: "", name: "", items: [] },
+        headgear: { class: "", name: "" },
+        goggles: { class: "", name: "" },
+        weapons: [],
+        magazines: [],
+        assignedItems: [],
+      });
+      const second = new PlayerSnapshotEvent(20, "inventorySnapshot", 2, {
+        ...first.payload,
+        weightKg: 18,
+      });
+
+      mgr.addEvent(first);
+      mgr.addEvent(second);
+
+      expect(mgr.getPlayerSnapshots(7, 9).size).toBe(0);
+      expect(mgr.getPlayerSnapshots(7, 10).get("inventorySnapshot")).toBe(first);
+      expect(mgr.getPlayerSnapshots(7, 99).get("inventorySnapshot")).toBe(second);
+      expect(mgr.getAll()).toEqual([]);
+    });
+
+    it("reports the frame of the first snapshot of a type", () => {
+      mgr.addEvent(new PlayerSnapshotEvent(30, "radioSnapshot", 1, { unitId: 7, radios: [] }));
+      mgr.addEvent(new PlayerSnapshotEvent(10, "radioSnapshot", 2, { unitId: 7, radios: [] }));
+      mgr.reconstructPlayerSnapshots();
+
+      expect(mgr.getFirstPlayerSnapshotFrame(7, "radioSnapshot")).toBe(10);
+      expect(mgr.getFirstPlayerSnapshotFrame(7, "medicalSnapshot")).toBeUndefined();
+      expect(mgr.getFirstPlayerSnapshotFrame(99, "radioSnapshot")).toBeUndefined();
+    });
+
+    it("rebuilds diff-encoded snapshots into full ones", () => {
+      mgr.addEvent(new PlayerSnapshotEvent(10, "medicalSnapshot", 1, {
+        unitId: 7,
+        playerUid: "uid",
+        vanilla: { damage: 0 },
+        ace: { heartRate: 80, pain: 0 },
+      }));
+      mgr.addEvent(new PlayerSnapshotEvent(20, "medicalSnapshot", 2, {
+        unitId: 7,
+        diffOf: 10,
+        set: { ace: { heartRate: 130 } },
+      }));
+      mgr.addEvent(new PlayerSnapshotEvent(30, "medicalSnapshot", 3, {
+        unitId: 7,
+        diffOf: 20,
+        set: { ace: { pain: 0.5 } },
+        unset: ["vanilla.damage"],
+      }));
+
+      mgr.reconstructPlayerSnapshots();
+
+      const atTwenty = mgr.getPlayerSnapshots(7, 20).get("medicalSnapshot")!;
+      expect(atTwenty.isDiff).toBe(true);
+      expect(atTwenty.payload).toEqual({
+        unitId: 7,
+        playerUid: "uid",
+        vanilla: { damage: 0 },
+        ace: { heartRate: 130, pain: 0 },
+      });
+
+      const atThirty = mgr.getPlayerSnapshots(7, 30).get("medicalSnapshot")!;
+      expect(atThirty.payload).toEqual({
+        unitId: 7,
+        playerUid: "uid",
+        vanilla: {},
+        ace: { heartRate: 130, pain: 0.5 },
+      });
+    });
+
+    it("rebuilds diffs that arrived out of order", () => {
+      const diff = new PlayerSnapshotEvent(20, "staminaSnapshot", 2, {
+        unitId: 7,
+        diffOf: 10,
+        set: { vanilla: { load: 0.6 } },
+      });
+      const full = new PlayerSnapshotEvent(10, "staminaSnapshot", 1, {
+        unitId: 7,
+        vanilla: { load: 0.2, fatigue: 0 },
+      });
+
+      mgr.addEvent(diff);
+      mgr.addEvent(full);
+      mgr.reconstructPlayerSnapshots();
+
+      expect(diff.payload).toEqual({ unitId: 7, vanilla: { load: 0.6, fatigue: 0 } });
+    });
+
+    it("keeps a diff usable when its base snapshot is missing", () => {
+      const orphan = new PlayerSnapshotEvent(20, "radioSnapshot", 1, {
+        unitId: 7,
+        diffOf: 10,
+        set: { radios: [{ class: "TFAR_anprc152_1", name: "AN/PRC-152" }] },
+      });
+
+      mgr.addEvent(orphan);
+      mgr.reconstructPlayerSnapshots();
+
+      expect(orphan.payload).toEqual({
+        unitId: 7,
+        radios: [{ class: "TFAR_anprc152_1", name: "AN/PRC-152" }],
+      });
+    });
+
+    it("removes snapshot indexes on clear", () => {
+      mgr.addEvent(new PlayerSnapshotEvent(10, "radioSnapshot", 1, {
+        unitId: 7,
+        playerUid: "uid",
+        radios: [],
+      }));
+
+      mgr.clear();
+
+      expect(mgr.getPlayerSnapshots(7, 10).size).toBe(0);
     });
   });
 

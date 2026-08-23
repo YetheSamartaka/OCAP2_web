@@ -10,6 +10,105 @@ function toBuffer(obj: unknown): ArrayBuffer {
 describe("JsonDecoder.decodeManifest", () => {
   const decoder = new JsonDecoder();
 
+  it("decodes additive player snapshot events", () => {
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "Snapshots",
+      endFrame: 100,
+      captureDelay: 1,
+      events: [[10, "inventorySnapshot", { unitId: 7, weightKg: 31.5, weapons: [] }]],
+    }));
+
+    expect(manifest.events).toEqual([{
+      frameNum: 10,
+      type: "inventorySnapshot",
+      payload: { unitId: 7, weightKg: 31.5, weapons: [] },
+    }]);
+  });
+
+  it("passes diff-encoded snapshots through untouched", () => {
+    const diff = { unitId: 7, diffOf: 10, set: { ace: { heartRate: 133 } }, unset: ["kat.spo2"] };
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "Snapshots",
+      endFrame: 100,
+      captureDelay: 1,
+      events: [[40, "medicalSnapshot", diff]],
+    }));
+
+    expect(manifest.events).toEqual([{ frameNum: 40, type: "medicalSnapshot", payload: diff }]);
+  });
+
+  it("skips snapshots that carry no unit id to index them by", () => {
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "Snapshots",
+      endFrame: 100,
+      captureDelay: 1,
+      events: [
+        [10, "radioSnapshot", { radios: [] }],
+        [20, "radioSnapshot", "not an object"],
+      ],
+    }));
+
+    expect(manifest.events).toEqual([]);
+  });
+
+  it("stamps tfarSettings onto the manifest and keeps them out of the event feed", () => {
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "Snapshots",
+      endFrame: 100,
+      captureDelay: 1,
+      events: [
+        [1, "tfarSettings", { terrainInterceptionCoefficient: 12, globalRadioRangeCoef: 0.5, tfarLoaded: true, source: "cba" }],
+        [10, "radioSnapshot", { unitId: 7, radios: [] }],
+      ],
+    }));
+
+    expect(manifest.radioPropagation).toMatchObject({
+      terrainInterceptionCoefficient: 12,
+      globalRadioRangeCoef: 0.5,
+      tfarLoaded: true,
+      source: "cba",
+    });
+    expect(manifest.events).toEqual([{
+      frameNum: 10,
+      type: "radioSnapshot",
+      payload: { unitId: 7, radios: [] },
+    }]);
+  });
+
+  it("stamps acreSettings onto the manifest without mixing them into TFAR settings", () => {
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "Snapshots",
+      endFrame: 100,
+      captureDelay: 1,
+      events: [
+        [1, "tfarSettings", { terrainInterceptionCoefficient: 12, globalRadioRangeCoef: 0.5, tfarLoaded: true, source: "cba" }],
+        [1, "acreSettings", { terrainLoss: 0.4, signalModel: 1, acreLoaded: true, source: "cba" }],
+        [10, "radioSnapshot", { unitId: 7, radios: [] }],
+      ],
+    }));
+
+    expect(manifest.radioPropagation).toMatchObject({
+      terrainInterceptionCoefficient: 12,
+      globalRadioRangeCoef: 0.5,
+    });
+    expect(manifest.acrePropagation).toMatchObject({
+      terrainLoss: 0.4,
+      signalModel: 1,
+      acreLoaded: true,
+      source: "cba",
+    });
+    expect(manifest.events).toEqual([{
+      frameNum: 10,
+      type: "radioSnapshot",
+      payload: { unitId: 7, radios: [] },
+    }]);
+  });
+
   it("decodes a minimal operation", () => {
     const data = {
       worldName: "Altis",

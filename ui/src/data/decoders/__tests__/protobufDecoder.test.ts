@@ -20,6 +20,165 @@ function encodePb<T>(msg: { encode: (m: T) => { finish: () => Uint8Array }; from
 describe("ProtobufDecoder.decodeManifest", () => {
   const decoder = new ProtobufDecoder();
 
+  it("decodes additive player snapshot payloads from the generic event message", () => {
+    const buffer = encodePb(PbManifest, {
+      version: 1,
+      worldName: "Altis",
+      missionName: "Snapshots",
+      endFrame: 100,
+      chunkSize: 300,
+      captureDelayMs: 1000,
+      chunkCount: 1,
+      events: [{
+        frameNum: 10,
+        type: "radioSnapshot",
+        message: JSON.stringify({ unitId: 7, radios: [{ frequency: 52, rangeMeters: 5000 }] }),
+      }],
+    });
+
+    expect(decoder.decodeManifest(buffer).events).toEqual([{
+      frameNum: 10,
+      type: "radioSnapshot",
+      payload: { unitId: 7, radios: [{ frequency: 52, rangeMeters: 5000 }] },
+    }]);
+  });
+
+  it("passes diff-encoded snapshots through untouched", () => {
+    const diff = { unitId: 7, diffOf: 10, set: { vanilla: { load: 0.61 } } };
+    const buffer = encodePb(PbManifest, {
+      version: 1,
+      worldName: "Altis",
+      missionName: "Snapshots",
+      endFrame: 100,
+      chunkSize: 300,
+      captureDelayMs: 1000,
+      chunkCount: 1,
+      events: [{ frameNum: 40, type: "staminaSnapshot", message: JSON.stringify(diff) }],
+    });
+
+    expect(decoder.decodeManifest(buffer).events).toEqual([{
+      frameNum: 40,
+      type: "staminaSnapshot",
+      payload: diff,
+    }]);
+  });
+
+  it("skips snapshots that carry no unit id to index them by", () => {
+    const buffer = encodePb(PbManifest, {
+      version: 1,
+      worldName: "Altis",
+      missionName: "Snapshots",
+      endFrame: 100,
+      chunkSize: 300,
+      captureDelayMs: 1000,
+      chunkCount: 1,
+      events: [
+        { frameNum: 10, type: "medicalSnapshot", message: JSON.stringify({ vanilla: {} }) },
+        { frameNum: 20, type: "medicalSnapshot", message: "not json" },
+      ],
+    });
+
+    expect(decoder.decodeManifest(buffer).events).toEqual([]);
+  });
+
+  it("stamps tfarSettings onto the manifest and keeps them out of the event feed", () => {
+    const buffer = encodePb(PbManifest, {
+      version: 1,
+      worldName: "Altis",
+      missionName: "Snapshots",
+      endFrame: 100,
+      chunkSize: 300,
+      captureDelayMs: 1000,
+      chunkCount: 1,
+      events: [
+        {
+          frameNum: 1,
+          type: "tfarSettings",
+          message: JSON.stringify({
+            terrainInterceptionCoefficient: 12,
+            globalRadioRangeCoef: 0.5,
+            tfarLoaded: true,
+            source: "cba",
+          }),
+        },
+        {
+          frameNum: 10,
+          type: "radioSnapshot",
+          message: JSON.stringify({ unitId: 7, radios: [] }),
+        },
+      ],
+    });
+
+    const manifest = decoder.decodeManifest(buffer);
+    expect(manifest.radioPropagation).toMatchObject({
+      terrainInterceptionCoefficient: 12,
+      globalRadioRangeCoef: 0.5,
+      tfarLoaded: true,
+      source: "cba",
+    });
+    expect(manifest.events).toEqual([{
+      frameNum: 10,
+      type: "radioSnapshot",
+      payload: { unitId: 7, radios: [] },
+    }]);
+  });
+
+  it("stamps acreSettings onto the manifest without mixing them into TFAR settings", () => {
+    const buffer = encodePb(PbManifest, {
+      version: 1,
+      worldName: "Altis",
+      missionName: "Snapshots",
+      endFrame: 100,
+      chunkSize: 300,
+      captureDelayMs: 1000,
+      chunkCount: 1,
+      events: [
+        {
+          frameNum: 1,
+          type: "tfarSettings",
+          message: JSON.stringify({
+            terrainInterceptionCoefficient: 12,
+            globalRadioRangeCoef: 0.5,
+            tfarLoaded: true,
+            source: "cba",
+          }),
+        },
+        {
+          frameNum: 1,
+          type: "acreSettings",
+          message: JSON.stringify({
+            terrainLoss: 0.4,
+            signalModel: 1,
+            acreLoaded: true,
+            source: "cba",
+          }),
+        },
+        {
+          frameNum: 10,
+          type: "radioSnapshot",
+          message: JSON.stringify({ unitId: 7, radios: [] }),
+        },
+      ],
+    });
+
+    const manifest = decoder.decodeManifest(buffer);
+    expect(manifest.radioPropagation).toMatchObject({
+      terrainInterceptionCoefficient: 12,
+      globalRadioRangeCoef: 0.5,
+    });
+    expect(manifest.acrePropagation).toMatchObject({
+      terrainLoss: 0.4,
+      signalModel: 1,
+      acreLoaded: true,
+      source: "cba",
+    });
+    expect(manifest.events).toEqual([{
+      frameNum: 10,
+      type: "radioSnapshot",
+      payload: { unitId: 7, radios: [] },
+    }]);
+  });
+
   it("decodes a minimal manifest", () => {
     const buffer = encodePb(PbManifest, {
       version: 2,

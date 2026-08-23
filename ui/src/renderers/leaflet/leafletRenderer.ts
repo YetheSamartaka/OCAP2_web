@@ -55,11 +55,12 @@ interface InternalMarkerHandle {
 
 interface InternalBriefingHandle {
   layer: L.Layer;
-  shape: "ICON" | "ELLIPSE" | "RECTANGLE" | "POLYLINE";
+  shape: "ICON" | "ELLIPSE" | "RECTANGLE" | "POLYLINE" | "POLYGON";
   layerKey: "briefingMarkers" | "systemMarkers" | "projectileMarkers";
   size?: [number, number];
   patternId?: string;
   shapeOpts?: { stroke: boolean; fill: boolean; fillOpacity: number };
+  dashArray?: string;
 }
 
 interface ShapeResult {
@@ -890,11 +891,12 @@ export class LeafletRenderer implements MapRenderer {
         interactive: false,
         renderer: this.svgRenderer,
       } as any);
-    } else if (def.shape === "ELLIPSE" || def.shape === "RECTANGLE") {
+    } else if (def.shape === "ELLIPSE" || def.shape === "RECTANGLE" || def.shape === "POLYGON") {
       // Build polygon options from brush type; use SVG renderer to avoid
       // canvas bitmap scaling during zoom animation
       const result = this.buildShapeOptions(cssColor, def.brush);
       const polygonOpts: any = { ...result.opts, noClip: false, interactive: false, renderer: this.svgRenderer };
+      if (def.dashArray) polygonOpts.dashArray = def.dashArray;
 
       shapeOpts = {
         stroke: !!result.opts.stroke,
@@ -919,7 +921,7 @@ export class LeafletRenderer implements MapRenderer {
       if (patternId) {
         const layerKey = def.layer ?? "briefingMarkers";
         layer.addTo(this.layers[layerKey]);
-        return wrapBriefing({ layer, shape: def.shape, layerKey, size: def.size, patternId, shapeOpts });
+        return wrapBriefing({ layer, shape: def.shape, layerKey, size: def.size, patternId, shapeOpts, dashArray: def.dashArray });
       }
     } else if (def.type.includes("Empty") && def.text) {
       // Empty markers are text-only labels (e.g. sector names).
@@ -985,7 +987,7 @@ export class LeafletRenderer implements MapRenderer {
       const el = (layer as L.Marker).getElement?.();
       if (el) el.style.display = "none";
     }
-    return wrapBriefing({ layer, shape: def.shape, layerKey, size: def.size, shapeOpts });
+    return wrapBriefing({ layer, shape: def.shape, layerKey, size: def.size, shapeOpts, dashArray: def.dashArray });
   }
 
   updateBriefingMarker(
@@ -1050,6 +1052,10 @@ export class LeafletRenderer implements MapRenderer {
 
       polygon.setLatLngs(latlngs);
       this.applyPolygonOpacity(polygon, internal, state.alpha);
+    } else if (internal.shape === "POLYGON" && state.points) {
+      const polygon = layer as L.Polygon;
+      polygon.setLatLngs(state.points.map((p) => this.armaToLatLng(p)));
+      this.applyPolygonOpacity(polygon, internal, state.alpha);
     } else if (internal.shape === "POLYLINE" && state.points) {
       const polyline = layer as L.Polyline;
       const latlngs = state.points.map((p) => this.armaToLatLng(p));
@@ -1088,7 +1094,11 @@ export class LeafletRenderer implements MapRenderer {
       fillOpacity = 0;
     }
 
-    polygon.setStyle({ opacity: strokeOpacity, fillOpacity });
+    polygon.setStyle({
+      opacity: strokeOpacity,
+      fillOpacity,
+      ...(internal.dashArray ? { dashArray: internal.dashArray } : {}),
+    });
   }
 
   private buildShapeOptions(

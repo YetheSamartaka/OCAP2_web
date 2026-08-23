@@ -8,6 +8,7 @@ import { EndMissionEvent } from "../../../playback/events/endMissionEvent";
 import { GeneralMissionEvent } from "../../../playback/events/generalEvent";
 import { CapturedEvent } from "../../../playback/events/capturedEvent";
 import { TerminalHackEvent } from "../../../playback/events/terminalHackEvent";
+import { PlayerSnapshotEvent } from "../../../playback/events/playerSnapshotEvent";
 import type { GameEvent } from "../../../playback/events/gameEvent";
 import { SIDE_COLORS_UI } from "../../../config/sideColors";
 import { formatElapsedTime } from "../../../playback/time";
@@ -56,6 +57,9 @@ export function EventsTab(): JSX.Element {
   const [filters, setFilters] = createSignal<EventFilterState>(DEFAULT_EVENT_FILTERS);
 
   const passesEventType = (event: GameEvent, f: EventFilterState): boolean => {
+    // Detail snapshots drive the player profile and are intentionally hidden
+    // from the human-readable mission event log.
+    if (event instanceof PlayerSnapshotEvent) return false;
     if (event instanceof HitKilledEvent) {
       return event.type === "killed" ? f.showKills : f.showHits;
     }

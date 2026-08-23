@@ -13,6 +13,11 @@ import {
 } from "../types";
 import type { DecoderStrategy } from "./decoder.interface";
 import {
+  extractRadioPropagation,
+  parseAcreSettingsPayload,
+  parseTfarSettingsPayload,
+} from "../radioPropagation";
+import {
   Manifest as PbManifest,
   Chunk as PbChunk,
   EntityType as PbEntityType,
@@ -149,6 +154,38 @@ function convertEvent(pb: PbEvent): EventDef | null {
       };
     case "generalEvent":
       return { frameNum, type, message: pb.message ?? "" };
+    case "inventorySnapshot":
+    case "medicalSnapshot":
+    case "staminaSnapshot":
+    case "radioSnapshot": {
+      try {
+        // Either a full snapshot or a diff against an earlier frame; both are keyed by unitId.
+        const payload = JSON.parse(pb.message);
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+        if (typeof payload.unitId !== "number") return null;
+        return { frameNum, type, payload } as EventDef;
+      } catch {
+        return null;
+      }
+    }
+    case "tfarSettings": {
+      try {
+        const payload = parseTfarSettingsPayload(JSON.parse(pb.message));
+        if (!payload) return null;
+        return { frameNum, type, payload };
+      } catch {
+        return null;
+      }
+    }
+    case "acreSettings": {
+      try {
+        const payload = parseAcreSettingsPayload(JSON.parse(pb.message));
+        if (!payload) return null;
+        return { frameNum, type, payload };
+      } catch {
+        return null;
+      }
+    }
     case "capturedFlag":
       return {
         frameNum,
@@ -232,6 +269,9 @@ function convertMarkerDef(pb: PbMarkerDef): AppMarkerDef {
 export class ProtobufDecoder implements DecoderStrategy {
   decodeManifest(buffer: ArrayBuffer): AppManifest {
     const pb = PbManifest.decode(new Uint8Array(buffer));
+    const extracted = extractRadioPropagation(
+      pb.events.map(convertEvent).filter((e): e is EventDef => e !== null),
+    );
 
     return {
       version: pb.version,
@@ -242,7 +282,7 @@ export class ProtobufDecoder implements DecoderStrategy {
       captureDelayMs: pb.captureDelayMs,
       chunkCount: pb.chunkCount,
       entities: pb.entities.map(convertEntityDef),
-      events: pb.events.map(convertEvent).filter((e): e is EventDef => e !== null),
+      events: extracted.events,
       markers: pb.markers.map(convertMarkerDef),
       times: pb.times.map((t) => ({
         frameNum: t.frameNum,
@@ -252,6 +292,8 @@ export class ProtobufDecoder implements DecoderStrategy {
       })),
       extensionVersion: pb.extensionVersion || undefined,
       addonVersion: pb.addonVersion || undefined,
+      radioPropagation: extracted.radioPropagation,
+      acrePropagation: extracted.acrePropagation,
     };
   }
 

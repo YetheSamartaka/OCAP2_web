@@ -1,0 +1,491 @@
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent } from "@solidjs/testing-library";
+import { PlayerProfileCard } from "../components/PlayerProfileCard";
+import { Unit } from "../../../playback/entities/unit";
+import type { EventDef, WorldConfig } from "../../../data/types";
+import { createTestEngine, TestProviders, unitDef, makeManifest } from "./testHelpers";
+
+afterEach(cleanup);
+
+function snapshotEvent(
+  frameNum: number,
+  type: "inventorySnapshot" | "staminaSnapshot" | "medicalSnapshot" | "radioSnapshot",
+  payload: Record<string, unknown>,
+): EventDef {
+  return { type, frameNum, payload: { unitId: 1, ...payload } } as unknown as EventDef;
+}
+
+function renderCard(events: EventDef[], frame = 10, world?: WorldConfig) {
+  const { engine, renderer } = createTestEngine();
+  if (world) engine.setWorldConfig(world);
+  const unitPositions = Array.from({ length: frame + 1 }, () => ({
+    position: [100, 200] as [number, number],
+    direction: 0,
+    alive: 1 as const,
+  }));
+  engine.loadRecording(
+    makeManifest([unitDef({ id: 1, name: "Rifleman", positions: unitPositions })], events),
+  );
+  engine.seekTo(frame);
+  const unit = engine.entityManager.getEntity(1) as Unit;
+
+  render(() => (
+    <TestProviders engine={engine} renderer={renderer}>
+      <PlayerProfileCard
+        unit={unit}
+        kills={0}
+        deaths={0}
+        markerCount={0}
+        isBlacklisted={false}
+        isFollowed={false}
+        isAdmin={false}
+        showKillCount={true}
+        onClose={() => {}}
+        onToggleFollow={() => {}}
+      />
+    </TestProviders>
+  ));
+  return { engine, renderer };
+}
+
+describe("PlayerProfileCard", () => {
+  it("converts Arma mass units to kilograms", () => {
+    renderCard([
+      snapshotEvent(5, "staminaSnapshot", {
+        vanilla: { massUnits: 545, load: 0.545, stamina: 26.6, staminaMax: 27.3 },
+      }),
+    ]);
+
+    expect(screen.getByText("24.7")).toBeTruthy();
+  });
+
+  it("shows vanilla stamina as a share of the load-adjusted maximum", () => {
+    renderCard([
+      snapshotEvent(5, "staminaSnapshot", {
+        vanilla: { massUnits: 545, load: 0.545, stamina: 13.65, staminaMax: 27.3 },
+      }),
+    ]);
+
+    expect(screen.getByText("50%")).toBeTruthy();
+  });
+
+  it("prefers the ACE anaerobic reserve when advanced fatigue is recorded", () => {
+    renderCard([
+      snapshotEvent(5, "staminaSnapshot", {
+        vanilla: { massUnits: 100, load: 0.1, stamina: 54, staminaMax: 54 },
+        ace: { anaerobicReserve: 0.42, aerobicReserve: 1, muscleDamage: 0, performanceFactor: 2 },
+      }),
+    ]);
+
+    expect(screen.getAllByText("42%").length).toBeGreaterThan(0);
+  });
+
+  it("does not read the vanilla pool that ACE froze above its ceiling", () => {
+    renderCard([
+      snapshotEvent(5, "staminaSnapshot", {
+        vanilla: { massUnits: 545, load: 0.545, stamina: 60, staminaMax: 27.3 },
+        ace: { anaerobicReserve: 0.87, aerobicReserve: 1, muscleDamage: 0, performanceFactor: 2 },
+      }),
+    ]);
+
+    expect(screen.getAllByText("87%").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Stamina" }));
+
+    expect(screen.getByText("ACE Advanced Fatigue")).toBeTruthy();
+    expect(screen.queryByText("Sprint reserve")).toBeNull();
+    expect(screen.queryByText("Fatigue")).toBeNull();
+    expect(screen.queryByText(/60\.0 s of/)).toBeNull();
+  });
+
+  it("prints ACE blood pressure as systolic/diastolic", () => {
+    renderCard([
+      snapshotEvent(5, "medicalSnapshot", {
+        vanilla: { damage: 0 },
+        ace: { bloodVolume: 6, heartRate: 80, bloodPressure: [80, 120] },
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+
+    expect(screen.getByText("120/80")).toBeTruthy();
+    expect(screen.queryByText("80/120")).toBeNull();
+  });
+
+  it("shows no pressure instead of 0/0 during cardiac arrest", () => {
+    renderCard([
+      snapshotEvent(5, "medicalSnapshot", {
+        vanilla: { damage: 0 },
+        ace: { bloodVolume: 5.7, heartRate: 0, bloodPressure: [0, 0], cardiacArrest: true, unconscious: true },
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+
+    expect(screen.getByText("No pressure")).toBeTruthy();
+    expect(screen.queryByText("0/0")).toBeNull();
+  });
+
+  it("lists every body part even when they are uninjured", () => {
+    renderCard([
+      snapshotEvent(5, "medicalSnapshot", {
+        vanilla: { damage: 0 },
+        ace: { bloodVolume: 6, heartRate: 80 },
+        bodyParts: [
+          { part: "head", damage: 0, items: [] },
+          { part: "body", damage: 0, items: [] },
+          { part: "leftarm", damage: 0, items: [] },
+          { part: "rightarm", damage: 0, items: [] },
+          { part: "leftleg", damage: 0, items: [] },
+          { part: "rightleg", damage: 0, items: [] },
+        ],
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+
+    expect(screen.getByText("Head")).toBeTruthy();
+    expect(screen.getByText("Torso")).toBeTruthy();
+    expect(screen.getByText("L Arm")).toBeTruthy();
+    expect(screen.getByText("R Arm")).toBeTruthy();
+    expect(screen.getByText("L Leg")).toBeTruthy();
+    expect(screen.getByText("R Leg")).toBeTruthy();
+    expect(screen.getAllByText("Uninjured").length).toBe(6);
+    expect(screen.getAllByText("Dmg 0%").length).toBe(6);
+  });
+
+  it("caps ACE body-part trauma at 100 percent", () => {
+    renderCard([
+      snapshotEvent(5, "medicalSnapshot", {
+        vanilla: { damage: 0 },
+        ace: { bloodVolume: 5, heartRate: 0 },
+        bodyParts: [{ part: "head", damage: 2.02, items: [{ kind: "wound", name: "Large Velocity Wound", count: 2 }] }],
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+
+    expect(screen.getByText("Dmg 100%")).toBeTruthy();
+    expect(screen.queryByText("Dmg 202%")).toBeNull();
+  });
+
+  it("replaces the vanilla hit point list with ACE readings when ACE is loaded", () => {
+    renderCard([
+      snapshotEvent(5, "medicalSnapshot", {
+        vanilla: { damage: 0.25, lifeState: "HEALTHY", hitPointNames: ["hithead"], hitPointDamage: [0.3] },
+        ace: { bloodVolume: 5.1, heartRate: 133, pain: 0.4, hemorrhage: 2 },
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+
+    expect(screen.getByText("ACE Medical")).toBeTruthy();
+    expect(screen.getByText("Class II")).toBeTruthy();
+    expect(screen.queryByText("Life state")).toBeNull();
+    expect(screen.queryByText("Damaged hit points")).toBeNull();
+  });
+
+  it("prefers the KAT oxygen saturation over the ACE one", () => {
+    renderCard([
+      snapshotEvent(5, "medicalSnapshot", {
+        vanilla: { damage: 0 },
+        ace: { bloodVolume: 6, heartRate: 80, spo2: 97 },
+        kat: { spo2: 81.4, etco2: 30 },
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+
+    expect(screen.getByText("81.4%")).toBeTruthy();
+    expect(screen.queryByText("97.0%")).toBeNull();
+  });
+
+  it("renders whatever treatments a body part carries without knowing their kind", () => {
+    renderCard([
+      snapshotEvent(5, "medicalSnapshot", {
+        vanilla: { damage: 0.2 },
+        ace: { bloodVolume: 5, heartRate: 90 },
+        bodyParts: [
+          { part: "head", damage: 0, items: [] },
+          {
+            part: "body",
+            damage: 0.45,
+            items: [
+              { kind: "bandage", name: "Bandaged wound", count: 3 },
+              { kind: "iv", name: "Saline IV (250ml)", detail: "180 ml left" },
+              { kind: "somethingNew", name: "Experimental patch" },
+            ],
+          },
+        ],
+        treatments: [{ kind: "medication", name: "Morphine", count: 2 }],
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+
+    expect(screen.getByText("Torso")).toBeTruthy();
+    expect(screen.getByText(/Bandaged wound/)).toBeTruthy();
+    expect(screen.getByText(/Saline IV \(250ml\)/)).toBeTruthy();
+    expect(screen.getByText(/Experimental patch/)).toBeTruthy();
+    expect(screen.getByText(/Morphine/)).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Body diagram" })).toBeTruthy();
+    expect(document.querySelector('[data-overlay="chestSeal"]')).toBeNull();
+  });
+
+  it("draws ACE/KAT treatment icons on the body diagram", () => {
+    renderCard([
+      snapshotEvent(5, "medicalSnapshot", {
+        vanilla: { damage: 0.2 },
+        ace: { bloodVolume: 5, heartRate: 90 },
+        kat: { pneumothorax: 1, chestSeal: true },
+        bodyParts: [
+          {
+            part: "body",
+            damage: 0.4,
+            items: [{ kind: "chestSeal", name: "Chest seal" }],
+          },
+          {
+            part: "rightarm",
+            damage: 0,
+            items: [{ kind: "tourniquet", name: "Tourniquet" }],
+          },
+        ],
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+
+    expect(document.querySelector('[data-overlay="chestSeal"]')).toBeTruthy();
+    expect(document.querySelector('[data-overlay="pneumothorax"]')).toBeTruthy();
+    expect(document.querySelector('[data-overlay="tourniquet:rightarm"]')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Torso" }));
+    expect(document.querySelector('[data-overlay="selected:body"]')).toBeTruthy();
+  });
+
+  it("prints ACE activity and quick-view lines the way the medical menu does", () => {
+    renderCard([
+      snapshotEvent(5, "medicalSnapshot", {
+        vanilla: { damage: 0.2 },
+        ace: { bloodVolume: 5, heartRate: 0 },
+        activity: [
+          { time: "10:02", text: "Matthew Allen has bandaged patient" },
+          { time: "10:02", text: "Matthew Allen applied a tourniquet" },
+        ],
+        quickView: [{ time: "10:02", text: "Matthew Allen checked Heart Rate: None" }],
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+
+    expect(screen.getByText("Activity log")).toBeTruthy();
+    expect(screen.getByText("Quick view")).toBeTruthy();
+    expect(screen.getByText("Matthew Allen has bandaged patient")).toBeTruthy();
+    expect(screen.getByText("Matthew Allen applied a tourniquet")).toBeTruthy();
+    expect(screen.getByText("Matthew Allen checked Heart Rate: None")).toBeTruthy();
+    expect(screen.getAllByText("10:02").length).toBe(3);
+  });
+
+  it("rebuilds a diff-encoded snapshot when the playhead sits on it", () => {
+    renderCard(
+      [
+        snapshotEvent(5, "radioSnapshot", {
+          playerUid: "uid",
+          radios: [
+            {
+              class: "TFAR_anprc152_1",
+              name: "AN/PRC-152",
+              mod: "TFAR",
+              type: "SW",
+              channel: 1,
+              frequency: 472.8,
+              code: "",
+              rangeMeters: 5000,
+              additional: false,
+            },
+          ],
+        }),
+        snapshotEvent(20, "radioSnapshot", {
+          diffOf: 5,
+          set: { radios: [{ class: "TFAR_anprc152_1", name: "AN/PRC-152", mod: "TFAR", type: "SW", channel: 3, frequency: 101, code: "", rangeMeters: 2000, additional: false }] },
+        }),
+      ],
+      20,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Radios" }));
+
+    expect(screen.getByText("101.000 MHz")).toBeTruthy();
+    expect(screen.getByText(/2\.0 km/)).toBeTruthy();
+  });
+
+  it("offers simple and approximate range buttons", () => {
+    const { renderer } = renderCard([
+      snapshotEvent(5, "radioSnapshot", {
+        radios: [
+          {
+            class: "TFAR_anprc152_1",
+            name: "AN/PRC-152",
+            mod: "TFAR",
+            type: "SW",
+            channel: 1,
+            frequency: 472.8,
+            code: "",
+            rangeMeters: 5000,
+            additional: false,
+          },
+        ],
+      }),
+    ]);
+    const createSpy = vi.spyOn(renderer, "createBriefingMarker");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Radios" }));
+
+    expect(screen.getByRole("button", { name: "Simple range" })).toBeTruthy();
+    const approx = screen.getByRole("button", { name: "Approximate range" });
+    expect(approx).toBeTruthy();
+    expect(approx.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Simple range" }));
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shape: "ELLIPSE",
+        size: [5000, 5000],
+        brush: "SolidBorder",
+        layer: "systemMarkers",
+      }),
+    );
+  });
+
+  it("enables approximate range when the map has elevation", () => {
+    renderCard(
+      [
+        snapshotEvent(5, "radioSnapshot", {
+          radios: [
+            {
+              class: "TFAR_anprc152_1",
+              name: "AN/PRC-152",
+              mod: "TFAR",
+              type: "SW",
+              channel: 1,
+              frequency: 472.8,
+              code: "",
+              rangeMeters: 5000,
+              additional: false,
+            },
+          ],
+        }),
+      ],
+      10,
+      {
+        worldName: "Altis",
+        worldSize: 30720,
+        maxZoom: 6,
+        minZoom: 0,
+        tileBaseUrl: "http://maps.test/altis",
+        hasDem: true,
+      },
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Radios" }));
+    expect(screen.getByRole("button", { name: "Approximate range" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("notes that ACRE coverage uses ACRE terrain loss", () => {
+    renderCard([
+      snapshotEvent(5, "radioSnapshot", {
+        radios: [
+          {
+            class: "ACRE_PRC152",
+            name: "AN/PRC-152",
+            mod: "ACRE",
+            type: "SR",
+            channel: 1,
+            frequency: 60,
+            code: "",
+            rangeMeters: 5000,
+            additional: false,
+            powerMilliwatts: 5000,
+          },
+        ],
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Radios" }));
+    expect(screen.getByText("Approximate range uses ACRE terrain loss")).toBeTruthy();
+  });
+
+  it("points at the first snapshot instead of implying the data is missing", () => {
+    renderCard([snapshotEvent(50, "inventorySnapshot", { weapons: [], magazines: [], assignedItems: [] })], 10);
+
+    expect(screen.getByText("First gear snapshot is at frame 50. Scrub forward to see it.")).toBeTruthy();
+  });
+
+  it("hides untracked snapshot tabs and metrics when a unit has none", () => {
+    const { engine, renderer } = createTestEngine();
+    engine.loadRecording(makeManifest([unitDef({ id: 2, name: "Allen", isPlayer: false })], []));
+    const unit = engine.entityManager.getEntity(2) as Unit;
+
+    render(() => (
+      <TestProviders engine={engine} renderer={renderer}>
+        <PlayerProfileCard
+          unit={unit}
+          kills={0}
+          deaths={0}
+          markerCount={0}
+          isBlacklisted={false}
+          isFollowed={false}
+          isAdmin={false}
+          showKillCount={true}
+          onClose={() => {}}
+          onToggleFollow={() => {}}
+        />
+      </TestProviders>
+    ));
+
+    expect(screen.getByText("Follow")).toBeTruthy();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByText("Gear")).toBeNull();
+    expect(screen.queryByText("Medical")).toBeNull();
+    expect(screen.queryByText("Radios")).toBeNull();
+    expect(screen.queryByText(/weight/i)).toBeNull();
+    expect(screen.queryByText("No gear snapshot was recorded for this player.")).toBeNull();
+  });
+
+  it("only lists snapshot tabs that exist for the unit", () => {
+    renderCard([snapshotEvent(5, "medicalSnapshot", { vanilla: { damage: 0.1, lifeState: "HEALTHY" } })]);
+
+    expect(screen.getByRole("tab", { name: "Medical" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "Gear" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Stamina" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Radios" })).toBeNull();
+    expect(screen.getByText("Life state")).toBeTruthy();
+  });
+
+  it("marks the selected tab as selected", () => {
+    renderCard([
+      snapshotEvent(5, "inventorySnapshot", { weapons: [], magazines: [], assignedItems: [] }),
+      snapshotEvent(5, "medicalSnapshot", { vanilla: { damage: 0.25, lifeState: "HEALTHY" } }),
+    ]);
+
+    expect(screen.getByRole("tab", { name: "Gear" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+    expect(screen.getByRole("tab", { name: "Medical" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Gear" }).getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("shows one snapshot category at a time and switches on tab click", () => {
+    renderCard([
+      snapshotEvent(5, "inventorySnapshot", { weapons: [], magazines: [], assignedItems: [] }),
+      snapshotEvent(5, "medicalSnapshot", { vanilla: { damage: 0.25, lifeState: "HEALTHY" } }),
+    ]);
+
+    expect(screen.getByText("Weapons")).toBeTruthy();
+    expect(screen.queryByText("Life state")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+
+    expect(screen.queryByText("Weapons")).toBeNull();
+    expect(screen.getByText("Life state")).toBeTruthy();
+  });
+});

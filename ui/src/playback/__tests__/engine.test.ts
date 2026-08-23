@@ -124,6 +124,72 @@ describe("PlaybackEngine", () => {
       expect(engine.eventManager.getAll()).toHaveLength(2);
     });
 
+    it("uses stamped TFAR settings and skips tfarSettings as a timeline event", () => {
+      const manifest = makeManifest({
+        radioPropagation: {
+          terrainInterceptionCoefficient: 12,
+          globalRadioRangeCoef: 0.5,
+          source: "cba",
+        },
+        events: [
+          {
+            frameNum: 1,
+            type: "tfarSettings",
+            payload: {
+              terrainInterceptionCoefficient: 12,
+              globalRadioRangeCoef: 0.5,
+              source: "cba",
+            },
+          },
+        ],
+      });
+      const cm = makeMockChunkManager();
+      engine.loadRecording(manifest, cm);
+
+      expect(engine.radioPropagation.terrainInterceptionCoefficient).toBe(12);
+      expect(engine.radioPropagation.globalRadioRangeCoef).toBe(0.5);
+      expect(engine.eventManager.getAll()).toHaveLength(0);
+    });
+
+    it("falls back to TFAR defaults when a recording has no settings event", () => {
+      engine.loadRecording(makeManifest(), makeMockChunkManager());
+      expect(engine.radioPropagation.terrainInterceptionCoefficient).toBe(7);
+      expect(engine.radioPropagation.globalRadioRangeCoef).toBe(1);
+    });
+
+    it("uses stamped ACRE settings and skips acreSettings as a timeline event", () => {
+      const manifest = makeManifest({
+        acrePropagation: {
+          terrainLoss: 0.4,
+          signalModel: 1,
+          source: "cba",
+        },
+        events: [
+          {
+            frameNum: 1,
+            type: "acreSettings",
+            payload: {
+              terrainLoss: 0.4,
+              signalModel: 1,
+              source: "cba",
+            },
+          },
+        ],
+      });
+      const cm = makeMockChunkManager();
+      engine.loadRecording(manifest, cm);
+
+      expect(engine.acrePropagation.terrainLoss).toBe(0.4);
+      expect(engine.acrePropagation.signalModel).toBe(1);
+      expect(engine.eventManager.getAll()).toHaveLength(0);
+    });
+
+    it("falls back to ACRE defaults when a recording has no acreSettings event", () => {
+      engine.loadRecording(makeManifest(), makeMockChunkManager());
+      expect(engine.acrePropagation.terrainLoss).toBe(1);
+      expect(engine.acrePropagation.signalModel).toBe(2);
+    });
+
     it("sets endFrame from manifest endFrame", () => {
       const manifest = makeManifest({ endFrame: 499 });
       const cm = makeMockChunkManager();

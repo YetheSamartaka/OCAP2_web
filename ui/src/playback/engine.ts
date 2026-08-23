@@ -1,6 +1,12 @@
 import { createSignal, type Accessor } from "solid-js";
 
-import type { Manifest, EventDef } from "../data/types";
+import type { Manifest, EventDef, WorldConfig } from "../data/types";
+import {
+  resolveAcrePropagation,
+  resolveTfarPropagation,
+  type AcreRadioPropagation,
+  type TfarRadioPropagation,
+} from "../data/radioPropagation";
 import type { TimeConfig } from "./time";
 import type { ChunkManager } from "../data/chunkManager";
 import type { MapRenderer } from "../renderers/renderer.interface";
@@ -15,6 +21,7 @@ import { EndMissionEvent } from "./events/endMissionEvent";
 import { GeneralMissionEvent } from "./events/generalEvent";
 import { CapturedEvent } from "./events/capturedEvent";
 import { TerminalHackEvent } from "./events/terminalHackEvent";
+import { PlayerSnapshotEvent } from "./events/playerSnapshotEvent";
 import { Unit } from "./entities/unit";
 import { Vehicle } from "./entities/vehicle";
 
@@ -55,6 +62,14 @@ function createGameEvent(def: EventDef): GameEvent | null {
     case "counterSet":
       // Counter events are handled separately via CounterState
       return null;
+    case "inventorySnapshot":
+    case "medicalSnapshot":
+    case "staminaSnapshot":
+    case "radioSnapshot":
+      return new PlayerSnapshotEvent(def.frameNum, def.type, id, def.payload);
+    case "tfarSettings":
+    case "acreSettings":
+      return null;
     default:
       return null;
   }
@@ -79,6 +94,7 @@ export class PlaybackEngine {
   private renderer: MapRenderer;
   private chunkManager: ChunkManager | null = null;
   private manifest: Manifest | null = null;
+  private _worldConfig: WorldConfig | undefined;
 
   // ─── Signals (reactive state) ───
   private _currentFrame: Accessor<number>;
@@ -187,6 +203,18 @@ export class PlaybackEngine {
   }
   get captureDelayMs(): Accessor<number> {
     return this._captureDelayMs;
+  }
+  get worldConfig(): WorldConfig | undefined {
+    return this._worldConfig;
+  }
+  setWorldConfig(world: WorldConfig | undefined): void {
+    this._worldConfig = world;
+  }
+  get radioPropagation(): TfarRadioPropagation {
+    return resolveTfarPropagation(this.manifest?.radioPropagation);
+  }
+  get acrePropagation(): AcreRadioPropagation {
+    return resolveAcrePropagation(this.manifest?.acrePropagation);
   }
   get timeConfig(): TimeConfig {
     const times = this.manifest?.times;
@@ -325,6 +353,9 @@ export class PlaybackEngine {
       }
     }
 
+    // Fold diff-encoded player snapshots back into full snapshots
+    this.eventManager.reconstructPlayerSnapshots();
+
     // Resolve entity references on hit/killed events
     this.eventManager.resolveReferences(this.entityManager);
 
@@ -347,6 +378,7 @@ export class PlaybackEngine {
     this.eventManager.clear();
     this.chunkManager = null;
     this.manifest = null;
+    this._worldConfig = undefined;
   }
 
   // ─── Playback loop ───
