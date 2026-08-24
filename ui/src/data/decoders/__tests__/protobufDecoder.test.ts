@@ -43,6 +43,23 @@ describe("ProtobufDecoder.decodeManifest", () => {
     }]);
   });
 
+  it("decodes additive server FPS payloads from the generic event message", () => {
+    const buffer = encodePb(PbManifest, {
+      version: 1,
+      worldName: "Altis",
+      missionName: "FPS",
+      endFrame: 180,
+      chunkSize: 300,
+      captureDelayMs: 1000,
+      chunkCount: 1,
+      events: [{ frameNum: 60, type: "serverFps", message: JSON.stringify({ fps: 42.5 }) }],
+    });
+
+    expect(decoder.decodeManifest(buffer).events).toEqual([
+      { frameNum: 60, type: "serverFps", fps: 42.5 },
+    ]);
+  });
+
   it("passes diff-encoded snapshots through untouched", () => {
     const diff = { unitId: 7, diffOf: 10, set: { vanilla: { load: 0.61 } } };
     const buffer = encodePb(PbManifest, {

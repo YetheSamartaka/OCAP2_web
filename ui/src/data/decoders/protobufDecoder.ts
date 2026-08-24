@@ -186,6 +186,15 @@ function convertEvent(pb: PbEvent): EventDef | null {
         return null;
       }
     }
+    case "serverFps": {
+      try {
+        const payload = JSON.parse(pb.message) as { fps?: unknown };
+        if (typeof payload?.fps !== "number" || !Number.isFinite(payload.fps) || payload.fps < 0) return null;
+        return { frameNum, type, fps: payload.fps };
+      } catch {
+        return null;
+      }
+    }
     case "capturedFlag":
       return {
         frameNum,

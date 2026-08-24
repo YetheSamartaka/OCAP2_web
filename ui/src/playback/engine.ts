@@ -22,6 +22,7 @@ import { GeneralMissionEvent } from "./events/generalEvent";
 import { CapturedEvent } from "./events/capturedEvent";
 import { TerminalHackEvent } from "./events/terminalHackEvent";
 import { PlayerSnapshotEvent } from "./events/playerSnapshotEvent";
+import { ServerFpsEvent } from "./events/serverFpsEvent";
 import { Unit } from "./entities/unit";
 import { Vehicle } from "./entities/vehicle";
 
@@ -70,6 +71,8 @@ function createGameEvent(def: EventDef): GameEvent | null {
     case "tfarSettings":
     case "acreSettings":
       return null;
+    case "serverFps":
+      return new ServerFpsEvent(def.frameNum, id, def.fps);
     default:
       return null;
   }

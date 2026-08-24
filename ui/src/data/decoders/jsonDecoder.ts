@@ -329,6 +329,11 @@ function convertEvent(raw: RawJsonEvent): EventDef | null {
       if (!payload) return null;
       return { frameNum, type, payload };
     }
+    case "serverFps": {
+      const fps = (raw[2] as { fps?: unknown } | undefined)?.fps;
+      if (typeof fps !== "number" || !Number.isFinite(fps) || fps < 0) return null;
+      return { frameNum, type, fps };
+    }
     default:
       // Unknown event types: skip
       return null;

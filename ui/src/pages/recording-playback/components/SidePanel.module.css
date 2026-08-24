@@ -580,6 +580,43 @@
   text-transform: uppercase;
 }
 
+.serverFpsCard {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+
+.serverFpsTitle {
+  color: var(--text-on-accent);
+}
+
+.serverFpsMetric {
+  padding: 7px 3px;
+  text-align: center;
+  border-radius: 5px;
+}
+
+.serverFpsValue {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.serverFpsLabel {
+  margin-top: 4px;
+  color: var(--text-on-accent);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .forceSummary {
   display: flex;
   flex-direction: column;

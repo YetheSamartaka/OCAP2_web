@@ -239,6 +239,11 @@ export interface AcreSettingsEventDef {
   payload: AcreRadioPropagation;
 }
 
+export interface ServerFpsEventDef {
+  type: "serverFps";
+  fps: number;
+}
+
 export type EventDef = { frameNum: number } & (
   | HitKilledEventDef
   | ConnectEventDef
@@ -250,6 +255,7 @@ export type EventDef = { frameNum: number } & (
   | PlayerSnapshotEventDef
   | TfarSettingsEventDef
   | AcreSettingsEventDef
+  | ServerFpsEventDef
 );
 
 // --------------- Markers ---------------

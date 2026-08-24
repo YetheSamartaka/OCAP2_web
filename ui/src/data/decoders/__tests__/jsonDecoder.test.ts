@@ -26,6 +26,21 @@ describe("JsonDecoder.decodeManifest", () => {
     }]);
   });
 
+  it("decodes additive server FPS events and rejects malformed samples", () => {
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "FPS",
+      endFrame: 180,
+      captureDelay: 1,
+      events: [
+        [0, "serverFps", { fps: 47.25 }],
+        [60, "serverFps", { fps: "bad" }],
+      ],
+    }));
+
+    expect(manifest.events).toEqual([{ frameNum: 0, type: "serverFps", fps: 47.25 }]);
+  });
+
   it("passes diff-encoded snapshots through untouched", () => {
     const diff = { unitId: 7, diffOf: 10, set: { ace: { heartRate: 133 } }, unset: ["kat.spo2"] };
     const manifest = decoder.decodeManifest(toBuffer({

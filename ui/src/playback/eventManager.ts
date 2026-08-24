@@ -4,6 +4,7 @@ import { Vehicle } from "./entities/vehicle";
 import { GameEvent } from "./events/gameEvent";
 import { HitKilledEvent } from "./events/hitKilledEvent";
 import { PlayerSnapshotEvent } from "./events/playerSnapshotEvent";
+import { ServerFpsEvent } from "./events/serverFpsEvent";
 import { applySnapshotDiff, isSnapshotDiff } from "../data/snapshotDiff";
 import type { PlayerSnapshotPayload, PlayerSnapshotType } from "../data/types";
 
@@ -16,6 +17,7 @@ export class EventManager {
   private events: GameEvent[] = [];
   private frameIndex: Map<number, GameEvent[]> = new Map();
   private playerSnapshots = new Map<number, Map<PlayerSnapshotType, PlayerSnapshotEvent[]>>();
+  private serverFpsEvents: ServerFpsEvent[] = [];
 
   /** Add an event and index it by frame number. */
   addEvent(event: GameEvent): void {
@@ -29,6 +31,11 @@ export class EventManager {
       const series = unitSnapshots.get(type);
       if (series) series.push(event);
       else unitSnapshots.set(type, [event]);
+      return;
+    }
+    if (event instanceof ServerFpsEvent) {
+      this.serverFpsEvents.push(event);
+      this.serverFpsEvents.sort((a, b) => a.frameNum - b.frameNum);
       return;
     }
     this.events.push(event);
@@ -101,6 +108,22 @@ export class EventManager {
       }
     }
     return result;
+  }
+
+  /** Current and aggregate server FPS through the requested playback frame. */
+  getServerFpsStats(frame: number): { current: number; average: number; median: number } | undefined {
+    const samples = this.serverFpsEvents.filter((event) => event.frameNum <= frame);
+    if (samples.length === 0) return undefined;
+
+    const values = samples.map((event) => event.fps);
+    const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 1
+      ? sorted[middle]
+      : (sorted[middle - 1] + sorted[middle]) / 2;
+
+    return { current: samples[samples.length - 1].fps, average, median };
   }
 
   /**
@@ -212,5 +235,6 @@ export class EventManager {
     this.events = [];
     this.frameIndex = new Map();
     this.playerSnapshots = new Map();
+    this.serverFpsEvents = [];
   }
 }

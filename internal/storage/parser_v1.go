@@ -167,12 +167,13 @@ func parseEventArray(evtArr []interface{}) *Event {
 		return event
 	}
 
-	// Additive player detail events keep their structured payload as JSON in
+	// Additive player detail and server FPS events keep their structured payload as JSON in
 	// the generic protobuf message field. Older readers safely ignore these
 	// unknown event names, while newer readers can reconstruct the object.
 	if event.Type == "inventorySnapshot" || event.Type == "medicalSnapshot" ||
 		event.Type == "staminaSnapshot" || event.Type == "radioSnapshot" ||
-		event.Type == "tfarSettings" || event.Type == "acreSettings" {
+		event.Type == "tfarSettings" || event.Type == "acreSettings" ||
+		event.Type == "serverFps" {
 		if len(evtArr) > 2 {
 			if encoded, err := json.Marshal(evtArr[2]); err == nil {
 				event.Message = string(encoded)

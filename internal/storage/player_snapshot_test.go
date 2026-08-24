@@ -110,11 +110,11 @@ func TestParseAcreSettingsEventPreservesPayload(t *testing.T) {
 		float64(1),
 		"acreSettings",
 		map[string]interface{}{
-			"terrainLoss":              0.4,
-			"signalModel":              1.0,
-			"ignoreAntennaDirection":   true,
-			"acreLoaded":               true,
-			"source":                   "cba",
+			"terrainLoss":            0.4,
+			"signalModel":            1.0,
+			"ignoreAntennaDirection": true,
+			"acreLoaded":             true,
+			"source":                 "cba",
 		},
 	})
 
@@ -129,4 +129,20 @@ func TestParseAcreSettingsEventPreservesPayload(t *testing.T) {
 	require.Equal(t, true, payload["ignoreAntennaDirection"])
 	require.Equal(t, true, payload["acreLoaded"])
 	require.Equal(t, "cba", payload["source"])
+}
+
+func TestParseServerFpsEventPreservesPayload(t *testing.T) {
+	event := parseEventArray([]interface{}{
+		float64(60),
+		"serverFps",
+		map[string]interface{}{"fps": 47.25},
+	})
+
+	require.NotNil(t, event)
+	require.Equal(t, "serverFps", event.Type)
+	require.Equal(t, uint32(60), event.FrameNum)
+
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(event.Message), &payload))
+	require.Equal(t, 47.25, payload["fps"])
 }
