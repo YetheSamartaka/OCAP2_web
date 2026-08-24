@@ -300,6 +300,25 @@ describe("Unit", () => {
       expect(u.firedOnFrame(10)).toEqual([[700, 800]]);
     });
   });
+
+  describe("firedCountThrough", () => {
+    it("counts shots at or before the given frame", () => {
+      const framesFired: Array<[number, [number, number]]> = [
+        [5, [500, 600]],
+        [5, [510, 620]],
+        [12, [700, 800]],
+      ];
+      const u = new Unit(1, "Test", "man", 0, 20, "WEST", true, "G1", "", null, "man", framesFired);
+      expect(u.firedCountThrough(4)).toBe(0);
+      expect(u.firedCountThrough(5)).toBe(2);
+      expect(u.firedCountThrough(12)).toBe(3);
+    });
+
+    it("returns 0 when the unit has no fire log", () => {
+      const u = new Unit(1, "Test", "man", 0, 20, "WEST", true, "G1", "", null, "man", null);
+      expect(u.firedCountThrough(10)).toBe(0);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

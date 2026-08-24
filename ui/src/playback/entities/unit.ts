@@ -57,6 +57,16 @@ export class Unit extends Entity {
     return targets;
   }
 
+  /** Number of recorded shots at or before this absolute frame. */
+  firedCountThrough(frame: number): number {
+    if (!this._framesFired) return 0;
+    let count = 0;
+    for (const [f] of this._framesFired) {
+      if (f <= frame) count++;
+    }
+    return count;
+  }
+
   /** CSS class for the unit's side: WEST->'blufor', EAST->'opfor', etc. */
   get sideClass(): string {
     return SIDE_CLASS[this.side] ?? "unknown";

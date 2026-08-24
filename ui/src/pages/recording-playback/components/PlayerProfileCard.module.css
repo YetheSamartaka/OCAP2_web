@@ -227,6 +227,21 @@
   margin-bottom: 7px;
 }
 
+.weapon + .containerSection,
+.empty + .containerSection,
+.containerSection + .containerSection {
+  margin-top: 8px;
+}
+
+.sectionLabel {
+  margin-bottom: 4px;
+  color: var(--text-dimmest);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .weapon b {
   font-size: 11px;
 }

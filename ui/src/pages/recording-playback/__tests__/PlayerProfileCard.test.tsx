@@ -15,7 +15,12 @@ function snapshotEvent(
   return { type, frameNum, payload: { unitId: 1, ...payload } } as unknown as EventDef;
 }
 
-function renderCard(events: EventDef[], frame = 10, world?: WorldConfig) {
+function renderCard(
+  events: EventDef[],
+  frame = 10,
+  world?: WorldConfig,
+  extra?: { framesFired?: Array<[number, [number, number]]> },
+) {
   const { engine, renderer } = createTestEngine();
   if (world) engine.setWorldConfig(world);
   const unitPositions = Array.from({ length: frame + 1 }, () => ({
@@ -24,7 +29,17 @@ function renderCard(events: EventDef[], frame = 10, world?: WorldConfig) {
     alive: 1 as const,
   }));
   engine.loadRecording(
-    makeManifest([unitDef({ id: 1, name: "Rifleman", positions: unitPositions })], events),
+    makeManifest(
+      [
+        unitDef({
+          id: 1,
+          name: "Rifleman",
+          positions: unitPositions,
+          framesFired: extra?.framesFired,
+        }),
+      ],
+      events,
+    ),
   );
   engine.seekTo(frame);
   const unit = engine.entityManager.getEntity(1) as Unit;
@@ -487,5 +502,202 @@ describe("PlayerProfileCard", () => {
 
     expect(screen.queryByText("Weapons")).toBeNull();
     expect(screen.getByText("Life state")).toBeTruthy();
+  });
+
+  it("lists magazines inside their containers instead of a duplicate magazines block", () => {
+    renderCard([
+      snapshotEvent(5, "inventorySnapshot", {
+        weapons: [
+          {
+            class: "hlc_pistol_P226R_Combat",
+            name: "SigSauer P226R Combat",
+            slot: "handgun",
+            attachments: [],
+          },
+        ],
+        magazines: [
+          { class: "rhs_mag_30Rnd_556x45_Mk318_PMAG", name: "30rnd PMAG Mk318 Mod 0", count: 5 },
+          { class: "ACE_16Rnd_9x19_mag", name: "9x19 mm 16Rnd Mag", count: 2 },
+          { class: "hlc_15Rnd_9x19_B_P226", name: "9mm FMJ 15rnd P226 Magazine", count: 1, loadedCount: 1 },
+          { class: "kat_Painkiller", name: "Painkillers", count: 3 },
+        ],
+        assignedItems: [],
+        uniform: {
+          class: "UK3CB_BAF_U_CombatUniform_MTP_RM",
+          name: "Combat Uniform MTP RM [BAF]",
+          items: [
+            { class: "ACE_MapTools", name: "Map Tools", count: 1 },
+            { class: "rhs_mag_30Rnd_556x45_Mk318_PMAG", name: "30rnd PMAG Mk318 Mod 0", count: 1 },
+          ],
+        },
+        vest: {
+          class: "UK3CB_BAF_V_Osprey_SL_A",
+          name: "Osprey Mk4 MTP SL (A) [BAF]",
+          items: [
+            { class: "ACE_CableTie", name: "Cable Tie", count: 2 },
+            { class: "ACE_16Rnd_9x19_mag", name: "9x19 mm 16Rnd Mag", count: 2 },
+            { class: "rhs_mag_30Rnd_556x45_Mk318_PMAG", name: "30rnd PMAG Mk318 Mod 0", count: 4 },
+          ],
+        },
+        backpack: {
+          class: "UK3CB_BAF_B_Bergen_MTP_SL_L_A",
+          name: "Bergen MTP SL L [BAF]",
+          items: [
+            { class: "ACE_packingBandage", name: "Bandage (Packing)", count: 17 },
+            { class: "kat_Painkiller", name: "Painkillers", count: 3 },
+          ],
+        },
+      }),
+    ]);
+
+    const weaponsBlock = screen.getByText("Weapons").closest("[class*='gearBlock']");
+    expect(weaponsBlock?.nextElementSibling?.textContent).toContain("Uniform");
+    expect(weaponsBlock?.textContent).toContain("9mm FMJ 15rnd P226 Magazine");
+
+    const uniformBlock = screen.getByText("Combat Uniform MTP RM [BAF]").closest("[class*='gearBlock']");
+    expect(uniformBlock?.textContent).toContain("Magazines");
+    expect(uniformBlock?.textContent).toContain("Items");
+    expect(uniformBlock?.textContent).toContain("30rnd PMAG Mk318 Mod 0");
+    expect(uniformBlock?.textContent).toContain("Map Tools");
+
+    const vestBlock = screen.getByText("Osprey Mk4 MTP SL (A) [BAF]").closest("[class*='gearBlock']");
+    expect(vestBlock?.textContent).toContain("Magazines");
+    expect(vestBlock?.textContent).toContain("9x19 mm 16Rnd Mag ×2");
+    expect(vestBlock?.textContent).toContain("30rnd PMAG Mk318 Mod 0 ×4");
+    expect(vestBlock?.textContent).toContain("Cable Tie ×2");
+
+    const backpackBlock = screen.getByText("Bergen MTP SL L [BAF]").closest("[class*='gearBlock']");
+    expect(backpackBlock?.textContent).toContain("Medical");
+    expect(backpackBlock?.textContent).not.toContain("Magazines");
+    expect(backpackBlock?.textContent).toContain("Painkillers ×3");
+    expect(backpackBlock?.textContent).toContain("Bandage (Packing) ×17");
+
+    expect(screen.getAllByText("Magazines").every((el) => el.className.includes("sectionLabel"))).toBe(true);
+  });
+
+  it("re-splits container magazines when a later snapshot fills them in", () => {
+    const { engine } = renderCard(
+      [
+        snapshotEvent(5, "inventorySnapshot", {
+          weapons: [],
+          magazines: [],
+          assignedItems: [],
+          vest: { class: "vest", name: "Osprey", items: [] },
+        }),
+        snapshotEvent(20, "inventorySnapshot", {
+          weapons: [],
+          magazines: [{ class: "30Rnd", name: "30rnd mag", count: 4 }],
+          assignedItems: [],
+          vest: {
+            class: "vest",
+            name: "Osprey",
+            items: [
+              { class: "ACE_CableTie", name: "Cable Tie", count: 2 },
+              { class: "30Rnd", name: "30rnd mag", count: 4 },
+            ],
+          },
+        }),
+      ],
+      5,
+    );
+
+    expect(screen.queryByText("Magazines")).toBeNull();
+    expect(screen.queryByText("30rnd mag ×4")).toBeNull();
+
+    engine.seekTo(20);
+
+    const vestBlock = screen.getByText("Osprey").closest("[class*='gearBlock']");
+    expect(vestBlock?.textContent).toContain("Magazines");
+    expect(vestBlock?.textContent).toContain("Items");
+    expect(vestBlock?.textContent).toContain("30rnd mag ×4");
+    expect(vestBlock?.textContent).toContain("Cable Tie ×2");
+  });
+
+  it("splits grenades and medical inside a container and sorts each group", () => {
+    renderCard([
+      snapshotEvent(5, "inventorySnapshot", {
+        weapons: [],
+        magazines: [
+          { class: "HandGrenade", name: "M67 Fragmentation Grenade", count: 1 },
+          { class: "SmokeShell", name: "M83 Smoke Grenade (White)", count: 2 },
+          { class: "rhs_mag_30Rnd_556x45_Mk318_PMAG", name: "30rnd PMAG Mk318 Mod 0", count: 4 },
+          { class: "kat_Painkiller", name: "Painkillers", count: 3 },
+        ],
+        assignedItems: [],
+        vest: {
+          class: "vest",
+          name: "Osprey",
+          items: [
+            { class: "ACE_CableTie", name: "Cable Tie", count: 2 },
+            { class: "SmokeShell", name: "M83 Smoke Grenade (White)", count: 2 },
+            { class: "ACE_splint", name: "Splint", count: 2 },
+            { class: "rhs_mag_30Rnd_556x45_Mk318_PMAG", name: "30rnd PMAG Mk318 Mod 0", count: 4 },
+            { class: "HandGrenade", name: "M67 Fragmentation Grenade", count: 1 },
+            { class: "ACE_adenosine", name: "Adenosine Autoinjector", count: 1 },
+            { class: "ACE_MapTools", name: "Map Tools", count: 1 },
+          ],
+        },
+      }),
+    ]);
+
+    const vestBlock = screen.getByText("Osprey").closest("[class*='gearBlock']");
+    const text = vestBlock?.textContent ?? "";
+    expect(text).toContain("Magazines");
+    expect(text).toContain("Grenades");
+    expect(text).toContain("Medical");
+    expect(text).toContain("Items");
+    expect(text.indexOf("Magazines")).toBeLessThan(text.indexOf("Grenades"));
+    expect(text.indexOf("Grenades")).toBeLessThan(text.indexOf("Medical"));
+    expect(text.indexOf("Medical")).toBeLessThan(text.indexOf("Items"));
+    expect(text.indexOf("M67 Fragmentation Grenade")).toBeLessThan(text.indexOf("M83 Smoke Grenade (White)"));
+    expect(text.indexOf("Adenosine Autoinjector")).toBeLessThan(text.indexOf("Splint"));
+    expect(text.indexOf("Cable Tie")).toBeLessThan(text.indexOf("Map Tools"));
+  });
+
+  it("shows carried magazine rounds after deaths, skipping grenades and medical", () => {
+    renderCard([
+      snapshotEvent(5, "inventorySnapshot", {
+        weapons: [],
+        magazines: [
+          { class: "rhs_mag_30Rnd_556x45_Mk318_PMAG", name: "30rnd PMAG", count: 5, totalRounds: 120 },
+          { class: "ACE_16Rnd_9x19_mag", name: "9x19 mm 16Rnd Mag", count: 2, totalRounds: 34 },
+          { class: "HandGrenade", name: "M67 Fragmentation Grenade", count: 1, totalRounds: 1 },
+          { class: "kat_Painkiller", name: "Painkillers", count: 3, totalRounds: 20 },
+        ],
+        assignedItems: [],
+      }),
+    ]);
+
+    const deaths = screen.getByText("Deaths");
+    const rounds = screen.getByText("Rounds");
+    expect(deaths.compareDocumentPosition(rounds) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(rounds.previousElementSibling?.textContent).toBe("154");
+  });
+
+  it("counts recorded shots up to the playhead next to rounds", () => {
+    const { engine } = renderCard(
+      [
+        snapshotEvent(5, "inventorySnapshot", {
+          weapons: [],
+          magazines: [{ class: "30Rnd", name: "30rnd mag", count: 4, totalRounds: 90 }],
+          assignedItems: [],
+        }),
+      ],
+      10,
+      undefined,
+      {
+        framesFired: [
+          [5, [100, 200]],
+          [8, [110, 210]],
+          [20, [120, 220]],
+        ],
+      },
+    );
+
+    const shot = screen.getByText("Shot");
+    expect(shot.previousElementSibling?.textContent).toBe("2");
+
+    engine.seekTo(20);
+    expect(shot.previousElementSibling?.textContent).toBe("3");
   });
 });

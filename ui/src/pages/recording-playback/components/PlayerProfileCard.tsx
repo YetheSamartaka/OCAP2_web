@@ -25,6 +25,16 @@ import { loadWorldDem, worldHasElevation, type DemGrid } from "../../../playback
 import { marchAcreCoverage } from "../../../playback/radioRange/acreCoverage";
 import { marchCoverage } from "../../../playback/radioRange/tfarCoverage";
 import { MedicalBodyImage } from "./MedicalBodyImage";
+import {
+  categorizeGearItems,
+  filledGearCategories,
+  GEAR_CATEGORY_LABEL_KEYS,
+  magazineClassSet,
+  magazinesNotInContainers,
+  carriedMagazineRounds,
+  shouldLabelGearCategory,
+  type GearCategory,
+} from "../gearCategories";
 import styles from "./PlayerProfileCard.module.css";
 
 type RangeMode = "simple" | "approx";
@@ -198,15 +208,60 @@ function MedicalLogList(props: { titleKey: string; entries?: MedicalLogEntry[] }
   );
 }
 
-function Container(props: { label: string; container?: GearContainer }): JSX.Element {
+function ContainerSection(props: { label?: string; items: GearItem[] }): JSX.Element {
+  return (
+    <div class={styles.containerSection}>
+      <Show when={props.label}>
+        <div class={styles.sectionLabel}>{props.label}</div>
+      </Show>
+      <ItemList items={props.items} />
+    </div>
+  );
+}
+
+function CategorizedItemSections(props: {
+  items?: GearItem[];
+  magazineClasses: Set<string>;
+  alwaysLabel?: boolean;
+}): JSX.Element {
   const { t } = useI18n();
+  const groups = () => categorizeGearItems(props.items, props.magazineClasses);
+  const filled = () => filledGearCategories(groups());
+  return (
+    <For each={filled()}>
+      {(key: GearCategory) => (
+        <ContainerSection
+          label={
+            shouldLabelGearCategory(key, filled(), props.alwaysLabel)
+              ? t(GEAR_CATEGORY_LABEL_KEYS[key])
+              : undefined
+          }
+          items={groups()[key]}
+        />
+      )}
+    </For>
+  );
+}
+
+function Container(props: {
+  label: string;
+  container?: GearContainer;
+  magazineClasses: Set<string>;
+}): JSX.Element {
+  const { t } = useI18n();
+  const groups = () => categorizeGearItems(props.container?.items, props.magazineClasses);
   return (
     <div class={styles.gearBlock}>
       <div class={styles.blockTitle}>
         {props.label}
         <span>{props.container?.name || t("profile_none")}</span>
       </div>
-      <ItemList items={props.container?.items} />
+      <Show
+        when={filledGearCategories(groups()).length}
+        fallback={<span class={styles.empty}>{t("profile_empty")}</span>}
+      >
+        <CategorizedItemSections items={props.container?.items} magazineClasses={props.magazineClasses} />
+      </Show>
     </div>
   );
 }
@@ -527,6 +582,14 @@ export function PlayerProfileCard(props: Props): JSX.Element {
             <span>{t("profile_deaths")}</span>
           </div>
         </Show>
+        <div title={t("profile_rounds")}>
+          <strong>{number(carriedMagazineRounds(inventory()?.magazines))}</strong>
+          <span>{t("profile_rounds")}</span>
+        </div>
+        <div title={t("profile_rounds_shot")}>
+          <strong>{props.unit.firedCountThrough(engine.currentFrame())}</strong>
+          <span>{t("profile_rounds_shot")}</span>
+        </div>
         <div>
           <strong>{props.isBlacklisted ? 0 : props.markerCount}</strong>
           <span>{t("profile_markers")}</span>
@@ -601,14 +664,27 @@ export function PlayerProfileCard(props: Props): JSX.Element {
                   <Show when={!gear().weapons.length}>
                     <span class={styles.empty}>{t("profile_none")}</span>
                   </Show>
+                  <CategorizedItemSections
+                    items={magazinesNotInContainers(gear())}
+                    magazineClasses={magazineClassSet(gear().magazines)}
+                    alwaysLabel
+                  />
                 </div>
-                <div class={styles.gearBlock}>
-                  <div class={styles.blockTitle}>{t("profile_magazines")}</div>
-                  <ItemList items={gear().magazines} />
-                </div>
-                <Container label={t("profile_uniform")} container={gear().uniform} />
-                <Container label={t("profile_vest")} container={gear().vest} />
-                <Container label={t("profile_backpack")} container={gear().backpack} />
+                <Container
+                  label={t("profile_uniform")}
+                  container={gear().uniform}
+                  magazineClasses={magazineClassSet(gear().magazines)}
+                />
+                <Container
+                  label={t("profile_vest")}
+                  container={gear().vest}
+                  magazineClasses={magazineClassSet(gear().magazines)}
+                />
+                <Container
+                  label={t("profile_backpack")}
+                  container={gear().backpack}
+                  magazineClasses={magazineClassSet(gear().magazines)}
+                />
                 <div class={styles.gearBlock}>
                   <div class={styles.blockTitle}>{t("profile_assigned")}</div>
                   <ItemList items={gear().assignedItems} />
