@@ -700,4 +700,78 @@ describe("PlayerProfileCard", () => {
     engine.seekTo(20);
     expect(shot.previousElementSibling?.textContent).toBe("3");
   });
+
+  it("compares two times after Diff is pinned and the playhead moves", () => {
+    const { engine } = renderCard(
+      [
+        snapshotEvent(5, "inventorySnapshot", {
+          weapons: [],
+          magazines: [{ class: "30Rnd", name: "30rnd mag", count: 5, totalRounds: 120 }],
+          assignedItems: [],
+          vest: {
+            class: "v",
+            name: "Vest",
+            items: [{ class: "30Rnd", name: "30rnd mag", count: 5 }],
+          },
+        }),
+        snapshotEvent(20, "inventorySnapshot", {
+          weapons: [],
+          magazines: [{ class: "30Rnd", name: "30rnd mag", count: 2, totalRounds: 40 }],
+          assignedItems: [],
+          vest: {
+            class: "v",
+            name: "Vest",
+            items: [{ class: "30Rnd", name: "30rnd mag", count: 2 }],
+          },
+        }),
+      ],
+      5,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Diff" }));
+    expect(screen.getByRole("button", { name: "Diffing" })).toBeTruthy();
+    expect(screen.getByText("Scrub the timeline to pick the other time.")).toBeTruthy();
+
+    engine.seekTo(20);
+    expect(screen.getByText("Net changes")).toBeTruthy();
+    expect(screen.getByText("30rnd mag ×5 → ×2 · 120 → 40 rds")).toBeTruthy();
+    expect(screen.queryByText("30rnd mag ×5 → ×2")).toBeNull();
+  });
+
+  it("reports a vest-to-backpack shuffle as moved instead of gained and lost", () => {
+    const { engine } = renderCard(
+      [
+        snapshotEvent(5, "inventorySnapshot", {
+          weapons: [],
+          magazines: [],
+          assignedItems: [],
+          vest: {
+            class: "v",
+            name: "Vest",
+            items: [{ class: "ACE_MapTools", name: "Map Tools", count: 1 }],
+          },
+          backpack: { class: "b", name: "Pack", items: [] },
+        }),
+        snapshotEvent(20, "inventorySnapshot", {
+          weapons: [],
+          magazines: [],
+          assignedItems: [],
+          vest: { class: "v", name: "Vest", items: [] },
+          backpack: {
+            class: "b",
+            name: "Pack",
+            items: [{ class: "ACE_MapTools", name: "Map Tools", count: 1 }],
+          },
+        }),
+      ],
+      5,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Diff" }));
+    engine.seekTo(20);
+    expect(screen.getByText("Moved")).toBeTruthy();
+    expect(screen.getByText(/Map Tools/)).toBeTruthy();
+    expect(screen.getByText(/Vest → Backpack/)).toBeTruthy();
+    expect(screen.queryByText("Net changes")).toBeNull();
+  });
 });

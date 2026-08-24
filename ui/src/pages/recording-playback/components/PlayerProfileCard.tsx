@@ -18,6 +18,7 @@ import { useI18n } from "../../../hooks/useLocale";
 import { useRenderer } from "../../../hooks/useRenderer";
 import type { Unit } from "../../../playback/entities/unit";
 import { PlayerSnapshotEvent } from "../../../playback/events/playerSnapshotEvent";
+import { formatTime } from "../../../playback/time";
 import type { BriefingMarkerHandle } from "../../../renderers/renderer.types";
 import { SIDE_COLORS_BRIGHT, SIDE_COLORS_UI } from "../../../config/sideColors";
 import { BODY_PART_IDS, type BodyPartId } from "../medical/bodyImage";
@@ -25,6 +26,14 @@ import { loadWorldDem, worldHasElevation, type DemGrid } from "../../../playback
 import { marchAcreCoverage } from "../../../playback/radioRange/acreCoverage";
 import { marchCoverage } from "../../../playback/radioRange/tfarCoverage";
 import { MedicalBodyImage } from "./MedicalBodyImage";
+import {
+  DiffEmpty,
+  formatSigned,
+  GearDiffView,
+  MedicalDiffView,
+  RadioDiffView,
+  StaminaDiffView,
+} from "./PlayerProfileDiff";
 import {
   categorizeGearItems,
   filledGearCategories,
@@ -35,6 +44,16 @@ import {
   shouldLabelGearCategory,
   type GearCategory,
 } from "../gearCategories";
+import {
+  diffGear,
+  diffMedical,
+  diffRadios,
+  diffStamina,
+  gearDiffIsEmpty,
+  medicalDiffIsEmpty,
+  radioDiffIsEmpty,
+  staminaReserve as reserveAt,
+} from "../profileDiff";
 import styles from "./PlayerProfileCard.module.css";
 
 type RangeMode = "simple" | "approx";
@@ -276,6 +295,9 @@ export function PlayerProfileCard(props: Props): JSX.Element {
   const [demFailed, setDemFailed] = createSignal(false);
   const [tab, setTab] = createSignal<TabId>("gear");
   const [selectedPart, setSelectedPart] = createSignal<string | null>(null);
+  const [diffing, setDiffing] = createSignal(false);
+  const [fromFrame, setFromFrame] = createSignal(0);
+  const [toPinned, setToPinned] = createSignal<number | null>(null);
 
   const approxAvailable = createMemo(() => {
     if (demFailed()) return false;
@@ -315,6 +337,8 @@ export function PlayerProfileCard(props: Props): JSX.Element {
     props.unit.id;
     setSelectedPart(null);
     setRangeRadio(null);
+    setDiffing(false);
+    setToPinned(null);
   });
 
   const trackedKinds = createMemo(() => {
@@ -342,14 +366,50 @@ export function PlayerProfileCard(props: Props): JSX.Element {
     engine.currentFrame();
     return engine.eventManager.getPlayerSnapshots(props.unit.id, engine.currentFrame());
   });
+  const toFrame = () => toPinned() ?? engine.currentFrame();
+  const snapshotsAt = (frame: number) => engine.eventManager.getPlayerSnapshots(props.unit.id, frame);
   const snapshotEvent = (type: PlayerSnapshotType): PlayerSnapshotEvent | undefined =>
     snapshots().get(type);
   const payload = <T,>(type: PlayerSnapshotType): T | undefined =>
     snapshotEvent(type)?.payload as T | undefined;
+  const payloadAt = <T,>(frame: number, type: PlayerSnapshotType): T | undefined =>
+    snapshotsAt(frame).get(type)?.payload as T | undefined;
   const inventory = () => payload<InventorySnapshot>("inventorySnapshot");
   const medical = () => payload<MedicalSnapshot>("medicalSnapshot");
   const stamina = () => payload<StaminaSnapshot>("staminaSnapshot");
   const radio = () => payload<RadioSnapshot>("radioSnapshot");
+  const fromInventory = () => payloadAt<InventorySnapshot>(fromFrame(), "inventorySnapshot");
+  const toInventory = () => payloadAt<InventorySnapshot>(toFrame(), "inventorySnapshot");
+  const fromMedical = () => payloadAt<MedicalSnapshot>(fromFrame(), "medicalSnapshot");
+  const toMedical = () => payloadAt<MedicalSnapshot>(toFrame(), "medicalSnapshot");
+  const fromStamina = () => payloadAt<StaminaSnapshot>(fromFrame(), "staminaSnapshot");
+  const toStamina = () => payloadAt<StaminaSnapshot>(toFrame(), "staminaSnapshot");
+  const fromRadio = () => payloadAt<RadioSnapshot>(fromFrame(), "radioSnapshot");
+  const toRadio = () => payloadAt<RadioSnapshot>(toFrame(), "radioSnapshot");
+  const sameDiffFrame = () => diffing() && fromFrame() === toFrame();
+  const gearChanges = createMemo(() => diffGear(fromInventory(), toInventory()));
+  const medicalChanges = createMemo(() => diffMedical(fromMedical(), toMedical()));
+  const staminaChanges = createMemo(() =>
+    diffStamina(fromStamina(), toStamina(), fromInventory(), toInventory()),
+  );
+  const radioChanges = createMemo(() => diffRadios(fromRadio(), toRadio()));
+  const frameLabel = (frame: number) => formatTime(frame, "elapsed", engine.timeConfig);
+  const toggleDiff = () => {
+    if (diffing()) {
+      setDiffing(false);
+      setToPinned(null);
+      return;
+    }
+    setFromFrame(engine.currentFrame());
+    setToPinned(null);
+    setDiffing(true);
+  };
+  const swapDiff = () => {
+    const from = fromFrame();
+    const to = toFrame();
+    setFromFrame(to);
+    setToPinned(from);
+  };
 
   const radioKey = (entry: RadioSnapshotEntry, index: number) =>
     `${index}:${entry.type}:${entry.frequency}:${entry.additional}`;
@@ -528,6 +588,52 @@ export function PlayerProfileCard(props: Props): JSX.Element {
     props.unit.name
       ? t("profile_aria_named", { name: props.unit.name })
       : t("profile_aria", { id: props.unit.id });
+  const killsAt = (frame: number) =>
+    engine.eventManager.getKillDeathCounts(frame).kills.get(props.unit.id) ?? 0;
+  const deathsAt = (frame: number) =>
+    engine.eventManager.getKillDeathCounts(frame).deaths.get(props.unit.id) ?? 0;
+  const metricNumber = (
+    fromValue: number | undefined,
+    toValue: number | undefined,
+    digits = 0,
+    asPercent = false,
+  ): JSX.Element => {
+    const fmt = (value: number | undefined) => {
+      if (value === undefined) return "—";
+      return asPercent ? percent(value) : number(value, digits);
+    };
+    if (!diffing()) return <>{fmt(toValue)}</>;
+    const fromShown = fmt(fromValue);
+    const toShown = fmt(toValue);
+    if (fromShown === toShown) return <>{toShown}</>;
+    if (fromValue === undefined || toValue === undefined) {
+      return (
+        <span class={styles.metricPair}>
+          {fromShown} → {toShown}
+        </span>
+      );
+    }
+    const delta = toValue - fromValue;
+    const deltaLabel = asPercent
+      ? `${formatSigned(Math.round(delta * 100))}%`
+      : formatSigned(delta, digits);
+    return (
+      <>
+        <span class={styles.metricPair}>
+          {fromShown} → {toShown}
+        </span>
+        <span
+          classList={{
+            [styles.metricDelta]: true,
+            [styles.metricAdded]: delta > 0,
+            [styles.metricRemoved]: delta < 0,
+          }}
+        >
+          {deltaLabel}
+        </span>
+      </>
+    );
+  };
 
   return (
     <aside class={styles.card} aria-label={cardLabel()}>
@@ -555,6 +661,12 @@ export function PlayerProfileCard(props: Props): JSX.Element {
         >
           {props.isFollowed ? t("profile_following") : t("profile_follow")}
         </button>
+        <button
+          classList={{ [styles.active]: diffing() }}
+          onClick={toggleDiff}
+        >
+          {diffing() ? t("profile_diffing") : t("profile_diff")}
+        </button>
         <Show when={props.isAdmin && props.markerCount > 0}>
           <div class={styles.adminActions}>
             <span>{t("profile_admin_actions")}</span>
@@ -571,23 +683,74 @@ export function PlayerProfileCard(props: Props): JSX.Element {
         </Show>
       </div>
 
+      <Show when={diffing()}>
+        <div class={styles.diffBar}>
+          <div class={styles.diffPin}>
+            <span>{t("profile_diff_from")}</span>
+            <strong title={t("profile_frame", { frame: fromFrame() })}>{frameLabel(fromFrame())}</strong>
+            <button type="button" onClick={() => setFromFrame(engine.currentFrame())}>
+              {t("profile_diff_pin_from")}
+            </button>
+          </div>
+          <span class={styles.diffArrow}>→</span>
+          <div class={styles.diffPin}>
+            <span>
+              {t("profile_diff_to")}
+              <Show when={toPinned() === null}>{` · ${t("profile_diff_playhead")}`}</Show>
+            </span>
+            <strong title={t("profile_frame", { frame: toFrame() })}>{frameLabel(toFrame())}</strong>
+            <button
+              type="button"
+              onClick={() =>
+                toPinned() === null ? setToPinned(engine.currentFrame()) : setToPinned(null)
+              }
+            >
+              {toPinned() === null ? t("profile_diff_pin_to") : t("profile_diff_follow")}
+            </button>
+          </div>
+          <button type="button" class={styles.diffSwap} onClick={swapDiff}>
+            {t("profile_diff_swap")}
+          </button>
+        </div>
+      </Show>
+
       <div class={styles.metrics}>
         <Show when={props.showKillCount}>
           <div>
-            <strong>{props.kills}</strong>
+            <strong>
+              {metricNumber(
+                diffing() ? killsAt(fromFrame()) : undefined,
+                diffing() ? killsAt(toFrame()) : props.kills,
+              )}
+            </strong>
             <span>{t("profile_kills")}</span>
           </div>
           <div>
-            <strong>{props.deaths}</strong>
+            <strong>
+              {metricNumber(
+                diffing() ? deathsAt(fromFrame()) : undefined,
+                diffing() ? deathsAt(toFrame()) : props.deaths,
+              )}
+            </strong>
             <span>{t("profile_deaths")}</span>
           </div>
         </Show>
         <div title={t("profile_rounds")}>
-          <strong>{number(carriedMagazineRounds(inventory()?.magazines))}</strong>
+          <strong>
+            {metricNumber(
+              carriedMagazineRounds(fromInventory()?.magazines),
+              carriedMagazineRounds(diffing() ? toInventory()?.magazines : inventory()?.magazines),
+            )}
+          </strong>
           <span>{t("profile_rounds")}</span>
         </div>
         <div title={t("profile_rounds_shot")}>
-          <strong>{props.unit.firedCountThrough(engine.currentFrame())}</strong>
+          <strong>
+            {metricNumber(
+              props.unit.firedCountThrough(fromFrame()),
+              props.unit.firedCountThrough(diffing() ? toFrame() : engine.currentFrame()),
+            )}
+          </strong>
           <span>{t("profile_rounds_shot")}</span>
         </div>
         <div>
@@ -596,19 +759,41 @@ export function PlayerProfileCard(props: Props): JSX.Element {
         </div>
         <Show when={tabIsTracked("stamina") || tabIsTracked("gear")}>
           <div>
-            <strong>{number(weightKg(), 1)}</strong>
+            <strong>
+              {metricNumber(
+                carriedWeightKg(fromStamina()?.vanilla) ?? carriedWeightKg(fromInventory()),
+                carriedWeightKg((diffing() ? toStamina() : stamina())?.vanilla) ??
+                  carriedWeightKg(diffing() ? toInventory() : inventory()),
+                1,
+              )}
+            </strong>
             <span>{t("profile_weight")}</span>
           </div>
         </Show>
         <Show when={tabIsTracked("stamina")}>
           <div title={staminaSource()}>
-            <strong>{percent(staminaReserve())}</strong>
+            <strong>
+              {metricNumber(
+                reserveAt(fromStamina(), fromInventory()),
+                reserveAt(diffing() ? toStamina() : stamina(), diffing() ? toInventory() : inventory()),
+                0,
+                true,
+              )}
+            </strong>
             <span>{t("profile_stamina")}</span>
           </div>
         </Show>
         <Show when={tabIsTracked("stamina") || tabIsTracked("gear")}>
           <div>
-            <strong>{percent(loadFraction())}</strong>
+            <strong>
+              {metricNumber(
+                fromStamina()?.vanilla?.load ?? fromInventory()?.load,
+                (diffing() ? toStamina() : stamina())?.vanilla?.load ??
+                  (diffing() ? toInventory() : inventory())?.load,
+                0,
+                true,
+              )}
+            </strong>
             <span>{t("profile_load")}</span>
           </div>
         </Show>
@@ -634,67 +819,88 @@ export function PlayerProfileCard(props: Props): JSX.Element {
       <div class={styles.scroll}>
         <Show when={tab() === "gear" && tabIsTracked("gear")}>
           <Show
-            when={inventory()}
+            when={diffing()}
             fallback={
-              <div class={styles.noData}>{missingSnapshotNote("inventorySnapshot", "profile_label_gear")}</div>
+              <Show
+                when={inventory()}
+                fallback={
+                  <div class={styles.noData}>{missingSnapshotNote("inventorySnapshot", "profile_label_gear")}</div>
+                }
+              >
+                {(gear) => (
+                  <>
+                    <SnapshotMeta event={snapshotEvent("inventorySnapshot")} />
+                    <div class={styles.equipped}>
+                      <span>
+                        {t("profile_head")}: {gear().headgear?.name || t("profile_none")}
+                      </span>
+                      <span>
+                        {t("profile_face")}: {gear().goggles?.name || t("profile_none")}
+                      </span>
+                    </div>
+                    <div class={styles.gearBlock}>
+                      <div class={styles.blockTitle}>{t("profile_weapons")}</div>
+                      <For each={gear().weapons}>
+                        {(weapon) => (
+                          <div class={styles.weapon}>
+                            <b>{weapon.name}</b>
+                            <small>{weapon.slot}</small>
+                            <ItemList items={weapon.attachments} />
+                          </div>
+                        )}
+                      </For>
+                      <Show when={!gear().weapons.length}>
+                        <span class={styles.empty}>{t("profile_none")}</span>
+                      </Show>
+                      <CategorizedItemSections
+                        items={magazinesNotInContainers(gear())}
+                        magazineClasses={magazineClassSet(gear().magazines)}
+                        alwaysLabel
+                      />
+                    </div>
+                    <Container
+                      label={t("profile_uniform")}
+                      container={gear().uniform}
+                      magazineClasses={magazineClassSet(gear().magazines)}
+                    />
+                    <Container
+                      label={t("profile_vest")}
+                      container={gear().vest}
+                      magazineClasses={magazineClassSet(gear().magazines)}
+                    />
+                    <Container
+                      label={t("profile_backpack")}
+                      container={gear().backpack}
+                      magazineClasses={magazineClassSet(gear().magazines)}
+                    />
+                    <div class={styles.gearBlock}>
+                      <div class={styles.blockTitle}>{t("profile_assigned")}</div>
+                      <ItemList items={gear().assignedItems} />
+                    </div>
+                  </>
+                )}
+              </Show>
             }
           >
-            {(gear) => (
-              <>
-                <SnapshotMeta event={snapshotEvent("inventorySnapshot")} />
-                <div class={styles.equipped}>
-                  <span>
-                    {t("profile_head")}: {gear().headgear?.name || t("profile_none")}
-                  </span>
-                  <span>
-                    {t("profile_face")}: {gear().goggles?.name || t("profile_none")}
-                  </span>
-                </div>
-                <div class={styles.gearBlock}>
-                  <div class={styles.blockTitle}>{t("profile_weapons")}</div>
-                  <For each={gear().weapons}>
-                    {(weapon) => (
-                      <div class={styles.weapon}>
-                        <b>{weapon.name}</b>
-                        <small>{weapon.slot}</small>
-                        <ItemList items={weapon.attachments} />
-                      </div>
-                    )}
-                  </For>
-                  <Show when={!gear().weapons.length}>
-                    <span class={styles.empty}>{t("profile_none")}</span>
-                  </Show>
-                  <CategorizedItemSections
-                    items={magazinesNotInContainers(gear())}
-                    magazineClasses={magazineClassSet(gear().magazines)}
-                    alwaysLabel
-                  />
-                </div>
-                <Container
-                  label={t("profile_uniform")}
-                  container={gear().uniform}
-                  magazineClasses={magazineClassSet(gear().magazines)}
-                />
-                <Container
-                  label={t("profile_vest")}
-                  container={gear().vest}
-                  magazineClasses={magazineClassSet(gear().magazines)}
-                />
-                <Container
-                  label={t("profile_backpack")}
-                  container={gear().backpack}
-                  magazineClasses={magazineClassSet(gear().magazines)}
-                />
-                <div class={styles.gearBlock}>
-                  <div class={styles.blockTitle}>{t("profile_assigned")}</div>
-                  <ItemList items={gear().assignedItems} />
-                </div>
-              </>
-            )}
+            <Show
+              when={!sameDiffFrame() && !gearDiffIsEmpty(gearChanges())}
+              fallback={<DiffEmpty sameFrame={sameDiffFrame()} />}
+            >
+              <GearDiffView diff={gearChanges()} />
+            </Show>
           </Show>
         </Show>
 
         <Show when={tab() === "medical" && tabIsTracked("medical")}>
+          <Show when={diffing()}>
+            <Show
+              when={!sameDiffFrame() && !medicalDiffIsEmpty(medicalChanges())}
+              fallback={<DiffEmpty sameFrame={sameDiffFrame()} />}
+            >
+              <MedicalDiffView diff={medicalChanges()} />
+            </Show>
+          </Show>
+          <Show when={!diffing()}>
           <Show
             when={medical()}
             fallback={
@@ -911,8 +1117,18 @@ export function PlayerProfileCard(props: Props): JSX.Element {
             </Show>
           </Show>
         </Show>
+        </Show>
 
         <Show when={tab() === "stamina" && tabIsTracked("stamina")}>
+          <Show when={diffing()}>
+            <Show
+              when={!sameDiffFrame() && staminaChanges().length > 0}
+              fallback={<DiffEmpty sameFrame={sameDiffFrame()} />}
+            >
+              <StaminaDiffView fields={staminaChanges()} />
+            </Show>
+          </Show>
+          <Show when={!diffing()}>
           <Show
             when={stamina()}
             fallback={
@@ -979,8 +1195,18 @@ export function PlayerProfileCard(props: Props): JSX.Element {
             </Show>
           </Show>
         </Show>
+        </Show>
 
         <Show when={tab() === "radio" && tabIsTracked("radio")}>
+          <Show when={diffing()}>
+            <Show
+              when={!sameDiffFrame() && !radioDiffIsEmpty(radioChanges())}
+              fallback={<DiffEmpty sameFrame={sameDiffFrame()} />}
+            >
+              <RadioDiffView diff={radioChanges()} />
+            </Show>
+          </Show>
+          <Show when={!diffing()}>
           <Show
             when={(radio()?.radios.length ?? 0) > 0}
             fallback={
@@ -1052,6 +1278,7 @@ export function PlayerProfileCard(props: Props): JSX.Element {
               }}
             </For>
           </Show>
+        </Show>
         </Show>
       </div>
     </aside>
