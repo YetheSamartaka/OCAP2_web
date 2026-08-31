@@ -1,5 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
+import { CopyIcon } from "../../../components/Icons";
 import type {
   GearContainer,
   GearItem,
@@ -26,6 +27,7 @@ import { loadWorldDem, worldHasElevation, type DemGrid } from "../../../playback
 import { marchAcreCoverage } from "../../../playback/radioRange/acreCoverage";
 import { marchCoverage } from "../../../playback/radioRange/tfarCoverage";
 import { MedicalBodyImage } from "./MedicalBodyImage";
+import { showHint } from "./Hint";
 import {
   DiffEmpty,
   formatSigned,
@@ -55,6 +57,7 @@ import {
   staminaReserve as reserveAt,
 } from "../profileDiff";
 import styles from "./PlayerProfileCard.module.css";
+import { exportAceArsenal, exportVanillaArsenal } from "../arsenalExport";
 
 type RangeMode = "simple" | "approx";
 
@@ -393,6 +396,18 @@ export function PlayerProfileCard(props: Props): JSX.Element {
     diffStamina(fromStamina(), toStamina(), fromInventory(), toInventory()),
   );
   const radioChanges = createMemo(() => diffRadios(fromRadio(), toRadio()));
+  const copyGear = (format: "vanilla" | "ace") => {
+    const gear = diffing() ? toInventory() : inventory();
+    if (!gear || !navigator.clipboard?.writeText) {
+      showHint(t("profile_export_failed"));
+      return;
+    }
+    const exported = format === "ace" ? exportAceArsenal(gear) : exportVanillaArsenal(gear);
+    void navigator.clipboard.writeText(exported).then(
+      () => showHint(t(format === "ace" ? "profile_exported_ace" : "profile_exported_vanilla")),
+      () => showHint(t("profile_export_failed")),
+    );
+  };
   const frameLabel = (frame: number) => formatTime(frame, "elapsed", engine.timeConfig);
   const toggleDiff = () => {
     if (diffing()) {
@@ -818,6 +833,18 @@ export function PlayerProfileCard(props: Props): JSX.Element {
 
       <div class={styles.scroll}>
         <Show when={tab() === "gear" && tabIsTracked("gear")}>
+          <Show when={diffing() ? toInventory() : inventory()}>
+            <div class={styles.exportActions}>
+              <button type="button" onClick={() => copyGear("vanilla")}>
+                <CopyIcon size={12} />
+                {t("profile_export_arsenal")}
+              </button>
+              <button type="button" onClick={() => copyGear("ace")}>
+                <CopyIcon size={12} />
+                {t("profile_export_ace_arsenal")}
+              </button>
+            </div>
+          </Show>
           <Show
             when={diffing()}
             fallback={

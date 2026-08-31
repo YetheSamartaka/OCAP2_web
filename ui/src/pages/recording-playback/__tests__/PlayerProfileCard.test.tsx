@@ -5,7 +5,10 @@ import { Unit } from "../../../playback/entities/unit";
 import type { EventDef, WorldConfig } from "../../../data/types";
 import { createTestEngine, TestProviders, unitDef, makeManifest } from "./testHelpers";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+});
 
 function snapshotEvent(
   frameNum: number,
@@ -64,6 +67,35 @@ function renderCard(
 }
 
 describe("PlayerProfileCard", () => {
+  it("exports the visible gear from buttons shown only on the gear tab", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderCard([
+      snapshotEvent(5, "inventorySnapshot", {
+        uniform: { class: "U_B_CombatUniform_mcam", name: "Uniform", items: [] },
+        vest: { class: "", name: "", items: [] },
+        backpack: { class: "", name: "", items: [] },
+        headgear: { class: "", name: "" },
+        goggles: { class: "", name: "" },
+        weapons: [],
+        magazines: [],
+        assignedItems: [],
+      }),
+      snapshotEvent(5, "medicalSnapshot", { vanilla: { damage: 0 } }),
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Export to Arsenal" }));
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    expect(writeText.mock.calls[0][0]).toContain('this forceAddUniform "U_B_CombatUniform_mcam";');
+
+    fireEvent.click(screen.getByRole("tab", { name: "Medical" }));
+    expect(screen.queryByRole("button", { name: "Export to Arsenal" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export to ACE Arsenal" })).toBeNull();
+  });
+
   it("converts Arma mass units to kilograms", () => {
     renderCard([
       snapshotEvent(5, "staminaSnapshot", {
