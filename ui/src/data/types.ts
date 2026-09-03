@@ -108,11 +108,25 @@ export type PlayerSnapshotType =
   | "staminaSnapshot"
   | "radioSnapshot";
 
+/** How the profile card groups an item. Absent means "items", the default. */
+export type GearCategoryTag = "magazines" | "grenades" | "medical";
+
 export interface GearItem {
   class: string;
-  name: string;
-  picture?: string;
+  /**
+   * The item's display name as the recorder read it from config, in English.
+   * Absent when the config only had a stringtable reference, which cannot be
+   * read in another language from SQF; `gearItemName` derives one from the class.
+   */
+  name?: string;
   count?: number;
+  /**
+   * Resolved by the recorder from config. Recordings used to carry the item's
+   * `.paa` icon path so the UI could substring-match it into a group, which cost
+   * megabytes for a path no browser can load. Only the lists the card groups —
+   * container cargo and magazines — carry it.
+   */
+  cat?: GearCategoryTag;
 }
 
 export interface GearContainer extends GearItem {
@@ -143,6 +157,7 @@ export interface InventorySnapshot {
  */
 export interface TreatmentItem {
   kind: string;
+  /** An English label the recorder writes; never a localized config name. */
   name: string;
   count?: number;
   detail?: string;
@@ -220,6 +235,19 @@ export interface PlayerSnapshotDiff {
   diffOf: number;
   set: Record<string, unknown>;
   unset?: string[];
+}
+
+/**
+ * An array patched entry by entry instead of replaced. `$key` names the field
+ * that identifies an entry, `put` upserts (merging onto the entry already there)
+ * and `del` removes. Entries the patch does not mention keep their place.
+ */
+export interface KeyedArrayPatch {
+  $key: string;
+  put?: Array<Record<string, unknown>>;
+  del?: string[];
+  /** Present only when put and del alone would leave the entries out of order. */
+  ord?: string[];
 }
 
 export type RawPlayerSnapshot = PlayerSnapshotPayload | PlayerSnapshotDiff;

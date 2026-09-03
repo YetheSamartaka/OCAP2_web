@@ -1,4 +1,5 @@
 import type { GearItem } from "../../data/types";
+import { gearItemName } from "../../data/gearDisplayName";
 
 export type GearCategory = "magazines" | "grenades" | "medical" | "items";
 
@@ -18,64 +19,46 @@ export interface CategorizedGear {
   items: GearItem[];
 }
 
-const ACE_MEDICAL_CLASS =
-  /^ace_(fielddressing|packingbandage|elasticbandage|quikclot|tourniquet|morphine|epinephrine|adenosine|splint|surgicalkit|personalaidkit|bodybag|salineiv|bloodiv|plasmaiv|painkillers|suture)/;
-
-function classNameOf(item: GearItem): string {
-  return (item.class || "").toLowerCase();
-}
-
-function displayNameOf(item: GearItem): string {
-  return (item.name || "").toLowerCase();
-}
-
-function pictureOf(item: GearItem): string {
-  return (item.picture || "").replace(/\\/g, "/").toLowerCase();
-}
-
-/** 40 mm / UGL grenade *shells* stay with magazines; they are ammo, not throwables. */
-function isLauncherGrenadeAmmo(item: GearItem): boolean {
-  const cls = classNameOf(item);
-  return /\d+rnd/.test(cls) && /(shell|ugl|40mm|grenade_shell)/.test(cls);
+/**
+ * The recorder resolves the category from config — ACE's `ACE_isMedicalItem`
+ * flag, the engine's Throw muzzles, and `CfgMagazines` membership — and writes it
+ * as `cat`. It used to be guessed here by substring-matching the `.paa` icon path
+ * the snapshot carried, which cost about 3 MB of unloadable texture paths per
+ * recording. "items" is the default and is left off the wire.
+ */
+export function classifyGearItem(item: GearItem): GearCategory {
+  const category = item.cat;
+  return category === "magazines" || category === "grenades" || category === "medical"
+    ? category
+    : "items";
 }
 
 export function isMedicalItem(item: GearItem): boolean {
-  const cls = classNameOf(item);
-  const picture = pictureOf(item);
-  if (cls.startsWith("kat_")) return true;
-  if (cls === "firstaidkit" || cls === "medikit") return true;
-  if (ACE_MEDICAL_CLASS.test(cls)) return true;
-  if (picture.includes("medical_treatment") || picture.includes("/kat/addons/")) return true;
-  if (picture.includes("firstaid") || picture.includes("medikit")) return true;
-  return false;
+  return classifyGearItem(item) === "medical";
 }
 
 export function isGrenadeItem(item: GearItem): boolean {
-  if (isLauncherGrenadeAmmo(item)) return false;
-  if (isMedicalItem(item)) return false;
-  const cls = classNameOf(item);
-  const name = displayNameOf(item);
-  const picture = pictureOf(item);
-  if (/^(smokeshell|handgrenade|minigrenade)/.test(cls)) return true;
-  if (/(chemlight|handflare|ir_grenade|flashbang|ace_m84|ace_cts9)/.test(cls)) return true;
-  if (/rhs_mag_(m67|m18|an_m8|mk84|mk3a2|rgd5|rgn|rgo|rdg2|nspd|fakel|zarya)/.test(cls)) return true;
-  if (picture.includes("smokegrenade") || picture.includes("chemlight")) return true;
-  if (picture.includes("grenade") && !picture.includes("grenade_shell")) return true;
-  if (/\bgrenade\b/.test(name) && !/(launcher|40\s*mm)/.test(name)) return true;
-  if (/\bsmoke grenade\b/.test(name) || /\bchemlight\b/.test(name) || /\bstun grenade\b/.test(name)) return true;
-  return false;
+  return classifyGearItem(item) === "grenades";
 }
 
-export function classifyGearItem(item: GearItem, magazineClasses: Set<string>): GearCategory {
-  if (isMedicalItem(item)) return "medical";
-  if (isGrenadeItem(item)) return "grenades";
-  if (item.class && magazineClasses.has(item.class)) return "magazines";
-  return "items";
+/**
+ * The recorder builds the weapon list in this order. A follow-up snapshot patches
+ * the list by `slot`, which appends a newly picked-up weapon at the end, so the
+ * card restores the order rather than showing a launcher above the rifle.
+ */
+const WEAPON_SLOT_ORDER = ["primary", "handgun", "launcher", "binocular"];
+
+export function weaponsInSlotOrder<T extends { slot: string }>(weapons?: T[]): T[] {
+  const rank = (slot: string): number => {
+    const at = WEAPON_SLOT_ORDER.indexOf(slot);
+    return at === -1 ? WEAPON_SLOT_ORDER.length : at;
+  };
+  return [...(weapons ?? [])].sort((a, b) => rank(a.slot) - rank(b.slot));
 }
 
 export function sortGearItems(items: GearItem[]): GearItem[] {
   return [...items].sort((a, b) => {
-    const byName = (a.name || a.class || "").localeCompare(b.name || b.class || "", undefined, {
+    const byName = gearItemName(a).localeCompare(gearItemName(b), undefined, {
       sensitivity: "base",
     });
     if (byName !== 0) return byName;
@@ -83,13 +66,10 @@ export function sortGearItems(items: GearItem[]): GearItem[] {
   });
 }
 
-export function categorizeGearItems(
-  items: GearItem[] | undefined,
-  magazineClasses: Set<string>,
-): CategorizedGear {
+export function categorizeGearItems(items: GearItem[] | undefined): CategorizedGear {
   const groups: CategorizedGear = { magazines: [], grenades: [], medical: [], items: [] };
   for (const item of items ?? []) {
-    groups[classifyGearItem(item, magazineClasses)].push(item);
+    groups[classifyGearItem(item)].push(item);
   }
   for (const key of GEAR_CATEGORY_ORDER) {
     groups[key] = sortGearItems(groups[key]);
@@ -112,10 +92,6 @@ export function shouldLabelGearCategory(
   return true;
 }
 
-export function magazineClassSet(magazines?: Array<{ class: string }>): Set<string> {
-  return new Set((magazines ?? []).map((item) => item.class).filter(Boolean));
-}
-
 export function magazinesNotInContainers(gear: {
   magazines?: GearItem[];
   uniform?: { items?: GearItem[] };
@@ -135,11 +111,10 @@ export function magazinesNotInContainers(gear: {
 export function carriedMagazineRounds(
   magazines?: Array<GearItem & { totalRounds?: number }>,
 ): number | undefined {
-  const magClasses = magazineClassSet(magazines);
   let total = 0;
   let have = false;
   for (const mag of magazines ?? []) {
-    if (classifyGearItem(mag, magClasses) !== "magazines") continue;
+    if (classifyGearItem(mag) !== "magazines") continue;
     if (typeof mag.totalRounds !== "number") continue;
     total += mag.totalRounds;
     have = true;

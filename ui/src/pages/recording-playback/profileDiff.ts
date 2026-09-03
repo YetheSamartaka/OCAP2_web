@@ -11,7 +11,13 @@ import type {
   TreatmentItem,
 } from "../../data/types";
 import { BODY_PART_IDS } from "./medical/bodyImage";
-import { classifyGearItem, magazineClassSet, magazinesNotInContainers } from "./gearCategories";
+import { classifyGearItem, magazinesNotInContainers, type GearCategory } from "./gearCategories";
+import { gearItemName } from "../../data/gearDisplayName";
+
+/** Classes the snapshot reports as carried magazines, wherever they sit. */
+function magazineClassSet(magazines?: Array<{ class: string }>): Set<string> {
+  return new Set((magazines ?? []).map((item) => item.class).filter(Boolean));
+}
 
 export type DiffPolarity = "added" | "removed" | "changed";
 export type GearLocation = "uniform" | "vest" | "backpack" | "assigned" | "loaded";
@@ -126,7 +132,7 @@ function itemCount(item?: GearItem): number {
 }
 
 function itemName(item?: GearItem, fallback = ""): string {
-  return item?.name || item?.class || fallback;
+  return gearItemName(item) || fallback;
 }
 
 function addStock(target: StockEntry[], location: GearLocation, items?: GearItem[]): void {
@@ -135,7 +141,6 @@ function addStock(target: StockEntry[], location: GearLocation, items?: GearItem
     const existing = target.find((entry) => entry.location === location && entry.class === item.class);
     if (existing) {
       existing.count += itemCount(item);
-      if (!existing.name && item.name) existing.name = item.name;
     } else {
       target.push({ class: item.class, name: itemName(item), count: itemCount(item), location });
     }
@@ -154,20 +159,27 @@ function stockFromInventory(inv?: InventorySnapshot): StockEntry[] {
   return stock;
 }
 
+interface MagazineStat {
+  name: string;
+  count: number;
+  totalRounds?: number;
+  category: GearCategory;
+}
+
+/** Rounds only make sense for firearm magazines, not for grenades or medical mags. */
 function ammoRounds(
   cls: string,
-  name: string,
-  stats: Map<string, { name: string; count: number; totalRounds?: number }>,
+  stats: Map<string, MagazineStat>,
   magClasses: Set<string>,
 ): number | undefined {
   if (!magClasses.has(cls)) return undefined;
-  if (classifyGearItem({ class: cls, name }, magClasses) !== "magazines") return undefined;
-  return stats.get(cls)?.totalRounds;
+  const stat = stats.get(cls);
+  if (stat?.category !== "magazines") return undefined;
+  return stat.totalRounds;
 }
-function magazineStats(
-  inv?: InventorySnapshot,
-): Map<string, { name: string; count: number; totalRounds?: number }> {
-  const stats = new Map<string, { name: string; count: number; totalRounds?: number }>();
+
+function magazineStats(inv?: InventorySnapshot): Map<string, MagazineStat> {
+  const stats = new Map<string, MagazineStat>();
   for (const mag of inv?.magazines ?? []) {
     if (!mag.class) continue;
     const prev = stats.get(mag.class);
@@ -179,6 +191,7 @@ function magazineStats(
       name: itemName(mag),
       count: (prev?.count ?? 0) + itemCount(mag),
       totalRounds,
+      category: classifyGearItem(mag),
     });
   }
   return stats;
@@ -326,8 +339,8 @@ export function diffGear(from?: InventorySnapshot, to?: InventorySnapshot): Gear
       name,
       fromCount,
       toCount,
-      ammoRounds(cls, name, fromMags, magClasses),
-      ammoRounds(cls, name, toMags, magClasses),
+      ammoRounds(cls, fromMags, magClasses),
+      ammoRounds(cls, toMags, magClasses),
     );
 
     const fromLocs = locationsOf(fromStock, cls);
@@ -629,7 +642,7 @@ export function diffRadios(from?: RadioSnapshot, to?: RadioSnapshot): RadioDiff 
     if (!fromEntry) {
       radios.push({
         polarity: "added",
-        name: toEntry.name || toEntry.class,
+        name: gearItemName(toEntry),
         fields: [
           field("profile_diff_channel", "text", undefined, toEntry.channel),
           field("profile_diff_frequency", "number", undefined, toEntry.frequency, { digits: 3, suffix: " MHz" }),
@@ -645,7 +658,7 @@ export function diffRadios(from?: RadioSnapshot, to?: RadioSnapshot): RadioDiff 
       field("profile_radio_additional", "bool", fromEntry.additional, toEntry.additional),
     ].filter((entry): entry is FieldDelta => !!entry);
     if (fields.length) {
-      radios.push({ polarity: "changed", name: toEntry.name || toEntry.class, fields });
+      radios.push({ polarity: "changed", name: gearItemName(toEntry), fields });
     }
   }
 
@@ -653,7 +666,7 @@ export function diffRadios(from?: RadioSnapshot, to?: RadioSnapshot): RadioDiff 
     if (toMap.has(key)) continue;
     radios.push({
       polarity: "removed",
-      name: fromEntry.name || fromEntry.class,
+      name: gearItemName(fromEntry),
       fields: [
         field("profile_diff_frequency", "number", fromEntry.frequency, undefined, { digits: 3, suffix: " MHz" }),
       ].filter((entry): entry is FieldDelta => !!entry),

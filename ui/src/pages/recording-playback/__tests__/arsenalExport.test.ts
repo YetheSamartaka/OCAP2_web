@@ -7,33 +7,30 @@ const inventory: InventorySnapshot = {
   load: 0.5,
   uniform: {
     class: "U_B_CombatUniform_mcam",
-    name: "Combat Fatigues",
     items: [
-      { class: "FirstAidKit", name: "First Aid Kit", count: 2 },
-      { class: "30Rnd_65x39_caseless_mag", name: "6.5 mm magazine", count: 3 },
+      { class: "FirstAidKit", count: 2 },
+      { class: "30Rnd_65x39_caseless_mag", count: 3 },
     ],
   },
-  vest: { class: "V_PlateCarrier1_rgr", name: "Carrier Rig", items: [] },
-  backpack: { class: "", name: "", items: [] },
-  headgear: { class: "H_HelmetB", name: "Combat Helmet" },
-  goggles: { class: "G_Tactical_Clear", name: "Tactical Glasses" },
+  vest: { class: "V_PlateCarrier1_rgr", items: [] },
+  backpack: { class: "", items: [] },
+  headgear: { class: "H_HelmetB" },
+  goggles: { class: "G_Tactical_Clear" },
   weapons: [{
     class: "arifle_MX_F",
-    name: "MX",
     slot: "primary",
     attachments: [
-      { class: "muzzle_snds_H", name: "Sound Suppressor" },
-      { class: "optic_Hamr", name: "RCO" },
+      { class: "muzzle_snds_H" },
+      { class: "optic_Hamr" },
     ],
   }],
   magazines: [{
     class: "30Rnd_65x39_caseless_mag",
-    name: "6.5 mm magazine",
     count: 4,
     totalRounds: 107,
     loadedCount: 1,
   }],
-  assignedItems: [{ class: "ItemMap", name: "Map" }],
+  assignedItems: [{ class: "ItemMap" }],
 };
 
 describe("Arsenal exports", () => {
@@ -74,7 +71,7 @@ describe("Arsenal exports", () => {
   it("escapes quotes using SQF string rules", () => {
     const exported = exportVanillaArsenal({
       ...inventory,
-      headgear: { class: 'Hat_"Quoted"', name: "Quoted hat" },
+      headgear: { class: 'Hat_"Quoted"' },
     });
     expect(exported).toContain('this addHeadgear "Hat_""Quoted""";');
   });
@@ -83,8 +80,8 @@ describe("Arsenal exports", () => {
     const exported = exportAceArsenal({
       ...inventory,
       uniform: { ...inventory.uniform, items: [] },
-      weapons: [{ class: "hgun_P07_F", name: "P07", slot: "handgun", attachments: [] }],
-      magazines: [{ class: "16Rnd_9x21_Mag", name: "9 mm magazine", count: 1, totalRounds: 12, loadedCount: 1 }],
+      weapons: [{ class: "hgun_P07_F", slot: "handgun", attachments: [] }],
+      magazines: [{ class: "16Rnd_9x21_Mag", count: 1, totalRounds: 12, loadedCount: 1 }],
     });
     expect(exported).toContain('["hgun_P07_F","","","",["16Rnd_9x21_Mag",12],[],""]');
   });
@@ -94,9 +91,9 @@ describe("Arsenal exports", () => {
       ...inventory,
       uniform: {
         ...inventory.uniform,
-        items: [{ class: "HandGrenade", name: "RGO Grenade", count: 1 }],
+        items: [{ class: "HandGrenade", count: 1 }],
       },
-      magazines: [{ class: "HandGrenade", name: "RGO Grenade", count: 1, totalRounds: 1, loadedCount: 1 }],
+      magazines: [{ class: "HandGrenade", count: 1, totalRounds: 1, loadedCount: 1 }],
     };
     const vanilla = exportVanillaArsenal(withGrenades);
     const ace = exportAceArsenal(withGrenades);
@@ -108,10 +105,10 @@ describe("Arsenal exports", () => {
     const exported = exportAceArsenal({
       ...inventory,
       uniform: { ...inventory.uniform, items: [] },
-      weapons: [{ class: "arifle_MX_GL_F", name: "MX 3GL", slot: "primary", attachments: [] }],
+      weapons: [{ class: "arifle_MX_GL_F", slot: "primary", attachments: [] }],
       magazines: [
-        { class: "30Rnd_65x39_caseless_mag", name: "6.5 mm magazine", count: 1, totalRounds: 23, loadedCount: 1 },
-        { class: "1Rnd_HE_Grenade_shell", name: "40 mm HE Grenade Shell", count: 1, totalRounds: 1, loadedCount: 1 },
+        { class: "30Rnd_65x39_caseless_mag", count: 1, totalRounds: 23, loadedCount: 1 },
+        { class: "1Rnd_HE_Grenade_shell", count: 1, totalRounds: 1, loadedCount: 1 },
       ],
     });
     expect(exported).toContain(
@@ -123,12 +120,12 @@ describe("Arsenal exports", () => {
     const exported = exportAceArsenal({
       ...inventory,
       assignedItems: [
-        { class: "ItemWatch", name: "Watch" },
-        { class: "ItemRadio", name: "Radio" },
-        { class: "NVGoggles", name: "Night Vision Goggles" },
-        { class: "ItemMap", name: "Map" },
-        { class: "ItemCompass", name: "Compass" },
-        { class: "B_UavTerminal", name: "UAV Terminal" },
+        { class: "ItemWatch" },
+        { class: "ItemRadio" },
+        { class: "NVGoggles" },
+        { class: "ItemMap" },
+        { class: "ItemCompass" },
+        { class: "B_UavTerminal" },
       ],
     });
     expect(exported).toContain(
@@ -141,16 +138,16 @@ describe("Arsenal exports", () => {
     ...inventory,
     weapons: [
       ...inventory.weapons,
-      { class: "Rangefinder", name: "Rangefinder", slot: "binocular", attachments: [] },
+      { class: "Rangefinder", slot: "binocular", attachments: [] },
     ],
     assignedItems: [
-      { class: "ItemMap", name: "Map" },
-      { class: "ItemCompass", name: "Compass" },
-      { class: "ItemWatch", name: "Watch" },
-      { class: "TFAR_anprc152_1", name: "AN/PRC-152 1" },
-      { class: "ItemAndroid", name: "S7 Android" },
-      { class: "Simc_PVS7", name: "AN/PVS-7" },
-      { class: "Rangefinder", name: "Rangefinder" },
+      { class: "ItemMap" },
+      { class: "ItemCompass" },
+      { class: "ItemWatch" },
+      { class: "TFAR_anprc152_1" },
+      { class: "ItemAndroid" },
+      { class: "Simc_PVS7" },
+      { class: "Rangefinder" },
     ],
   };
 
@@ -181,7 +178,7 @@ describe("Arsenal exports", () => {
       ...moddedAssignedItems,
       vest: {
         ...inventory.vest,
-        items: [{ class: "TFAR_anprc154_12", name: "AN/PRC-154 12", count: 1 }],
+        items: [{ class: "TFAR_anprc154_12", count: 1 }],
       },
     };
     const vanilla = exportVanillaArsenal(withSpareRadio);
@@ -199,9 +196,9 @@ describe("Arsenal exports", () => {
     const exported = exportAceArsenal({
       ...inventory,
       assignedItems: [
-        { class: "ItemMap", name: "Map" },
-        { class: "mod_thing_a", name: "Thing A" },
-        { class: "mod_thing_b", name: "Thing B" },
+        { class: "ItemMap" },
+        { class: "mod_thing_a" },
+        { class: "mod_thing_b" },
       ],
     });
     // assignedItems reports map, compass, watch, radio, gps, NVG in that order.

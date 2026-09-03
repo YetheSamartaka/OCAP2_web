@@ -16,11 +16,11 @@ function inventory(overrides: Partial<InventorySnapshot> = {}): InventorySnapsho
     weapons: [],
     magazines: [],
     assignedItems: [],
-    uniform: { class: "u", name: "Uniform", items: [] },
-    vest: { class: "v", name: "Vest", items: [] },
-    backpack: { class: "b", name: "Pack", items: [] },
-    headgear: { class: "", name: "" },
-    goggles: { class: "", name: "" },
+    uniform: { class: "u", items: [] },
+    vest: { class: "v", items: [] },
+    backpack: { class: "b", items: [] },
+    headgear: { class: "" },
+    goggles: { class: "" },
     ...overrides,
   };
 }
@@ -28,19 +28,17 @@ function inventory(overrides: Partial<InventorySnapshot> = {}): InventorySnapsho
 describe("diffGear", () => {
   it("summarizes ammo spent as a net magazine change with round counts", () => {
     const from = inventory({
-      magazines: [{ class: "30Rnd", name: "30rnd mag", count: 5, totalRounds: 120 }],
+      magazines: [{ class: "30Rnd", cat: "magazines", count: 5, totalRounds: 120 }],
       vest: {
         class: "v",
-        name: "Vest",
-        items: [{ class: "30Rnd", name: "30rnd mag", count: 4 }],
+        items: [{ class: "30Rnd", count: 4 }],
       },
     });
     const to = inventory({
-      magazines: [{ class: "30Rnd", name: "30rnd mag", count: 3, totalRounds: 47 }],
+      magazines: [{ class: "30Rnd", cat: "magazines", count: 3, totalRounds: 47 }],
       vest: {
         class: "v",
-        name: "Vest",
-        items: [{ class: "30Rnd", name: "30rnd mag", count: 2 }],
+        items: [{ class: "30Rnd", count: 2 }],
       },
     });
 
@@ -62,15 +60,13 @@ describe("diffGear", () => {
     const from = inventory({
       vest: {
         class: "v",
-        name: "Vest",
-        items: [{ class: "ACE_MapTools", name: "Map Tools", count: 1 }],
+        items: [{ class: "ACE_MapTools", count: 1 }],
       },
     });
     const to = inventory({
       backpack: {
         class: "b",
-        name: "Pack",
-        items: [{ class: "ACE_MapTools", name: "Map Tools", count: 1 }],
+        items: [{ class: "ACE_MapTools", count: 1 }],
       },
     });
 
@@ -85,18 +81,18 @@ describe("diffGear", () => {
   it("reports a weapon swap on the same slot", () => {
     const diff = diffGear(
       inventory({
-        weapons: [{ class: "arifle_MX", name: "MX", slot: "primary", attachments: [] }],
+        weapons: [{ class: "arifle_MX", slot: "primary", attachments: [] }],
       }),
       inventory({
-        weapons: [{ class: "arifle_AK12", name: "AK-12", slot: "primary", attachments: [] }],
+        weapons: [{ class: "arifle_AK12", slot: "primary", attachments: [] }],
       }),
     );
 
     expect(diff.weapons).toEqual([
       expect.objectContaining({
         slot: "primary",
-        fromName: "MX",
-        toName: "AK-12",
+        fromName: "Arifle MX",
+        toName: "Arifle AK12",
         polarity: "changed",
       }),
     ]);
@@ -104,8 +100,8 @@ describe("diffGear", () => {
 
   it("is empty when the reconstructed kit did not change", () => {
     const kit = inventory({
-      magazines: [{ class: "30Rnd", name: "30rnd mag", count: 2, totalRounds: 60 }],
-      vest: { class: "v", name: "Vest", items: [{ class: "30Rnd", name: "30rnd mag", count: 2 }] },
+      magazines: [{ class: "30Rnd", cat: "magazines", count: 2, totalRounds: 60 }],
+      vest: { class: "v", items: [{ class: "30Rnd", count: 2 }] },
     });
     expect(gearDiffIsEmpty(diffGear(kit, kit))).toBe(true);
   });
@@ -176,7 +172,6 @@ describe("diffRadios", () => {
       radios: [
         {
           class: "TFAR_anprc152_1",
-          name: "AN/PRC-152",
           mod: "TFAR",
           type: "SW",
           channel: 1,

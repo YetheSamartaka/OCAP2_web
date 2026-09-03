@@ -1,4 +1,5 @@
 import type { GearContainer, GearItem, InventorySnapshot } from "../../data/types";
+import { gearItemName } from "../../data/gearDisplayName";
 
 type Weapon = InventorySnapshot["weapons"][number];
 type Magazine = InventorySnapshot["magazines"][number];
@@ -143,7 +144,7 @@ function averageRounds(magazine: Magazine): number {
 function attachmentSlots(weapon: Weapon): [string, string, string, string] {
   const slots: [string, string, string, string] = ["", "", "", ""];
   for (const attachment of weapon.attachments ?? []) {
-    const value = `${attachment.class} ${attachment.name}`.toLowerCase();
+    const value = `${attachment.class} ${gearItemName(attachment)}`.toLowerCase();
     const index = value.includes("muzzle") || value.includes("suppress") || value.includes("silencer")
       ? 0
       : value.includes("optic") || value.includes("scope") || value.includes("sight")
@@ -203,7 +204,7 @@ interface WeaponMagazines {
 }
 
 function magazineText(magazine: Magazine): string {
-  return `${magazine.class} ${magazine.name}`.toLowerCase();
+  return `${magazine.class} ${gearItemName(magazine)}`.toLowerCase();
 }
 
 function looksLikeLauncherMagazine(magazine: Magazine): boolean {
@@ -291,11 +292,11 @@ const ASSIGNED_SLOT_INDEX: Record<AssignedSlot, number> = {
 const ASSIGNED_REPORT_ORDER: AssignedSlot[] = ["map", "compass", "watch", "radio", "gps", "nvg"];
 
 /**
- * Recordings only carry a class name and a display name, so the slot has to be
- * recognised from those. Modded gear rarely spells its role out in English —
- * a TFAR radio is `TFAR_anprc152_1` "AN/PRC-152 1", a cTab GPS is `ItemAndroid`
- * "S7 Android" — so match the families that actually turn up. Order matters:
- * TFAR's MicroDAGR is a GPS even though its class carries the radio prefix.
+ * Recordings only carry a class name, so the slot has to be recognised from that
+ * and from the label derived from it. Modded gear rarely spells its role out —
+ * a TFAR radio is `TFAR_anprc152_1`, a cTab GPS is `ItemAndroid` — so match the
+ * families that actually turn up. Order matters: TFAR's MicroDAGR is a GPS even
+ * though its class carries the radio prefix.
  */
 const ASSIGNED_SLOT_PATTERNS: Array<[AssignedSlot, RegExp]> = [
   ["gps", /gps|dagr|ctab|android|tablet|garmin|uav|terminal|\bbft\b/],
@@ -327,7 +328,7 @@ function assignedEntries(inventory: InventorySnapshot): AssignedEntry[] {
   const entries: AssignedEntry[] = [];
   for (const item of inventory.assignedItems ?? []) {
     if (!item.class || weaponClasses.has(item.class)) continue;
-    const text = `${item.class} ${item.name ?? ""}`.toLowerCase();
+    const text = `${item.class} ${gearItemName(item)}`.toLowerCase();
     if (BINOCULAR_PATTERN.test(text)) continue;
     entries.push({
       class: arsenalClass(item.class),

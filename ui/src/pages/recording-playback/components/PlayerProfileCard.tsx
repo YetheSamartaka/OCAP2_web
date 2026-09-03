@@ -40,12 +40,13 @@ import {
   categorizeGearItems,
   filledGearCategories,
   GEAR_CATEGORY_LABEL_KEYS,
-  magazineClassSet,
   magazinesNotInContainers,
   carriedMagazineRounds,
   shouldLabelGearCategory,
+  weaponsInSlotOrder,
   type GearCategory,
 } from "../gearCategories";
+import { gearItemName } from "../../../data/gearDisplayName";
 import {
   diffGear,
   diffMedical,
@@ -178,7 +179,7 @@ function ItemList(props: { items?: GearItem[] }): JSX.Element {
       <For each={props.items ?? []}>
         {(item) => (
           <span class={styles.itemChip} title={item.class}>
-            {item.name || item.class}
+            {gearItemName(item)}
             <Show when={(item.count ?? 1) > 1}> ×{item.count}</Show>
           </span>
         )}
@@ -243,11 +244,10 @@ function ContainerSection(props: { label?: string; items: GearItem[] }): JSX.Ele
 
 function CategorizedItemSections(props: {
   items?: GearItem[];
-  magazineClasses: Set<string>;
   alwaysLabel?: boolean;
 }): JSX.Element {
   const { t } = useI18n();
-  const groups = () => categorizeGearItems(props.items, props.magazineClasses);
+  const groups = () => categorizeGearItems(props.items);
   const filled = () => filledGearCategories(groups());
   return (
     <For each={filled()}>
@@ -268,21 +268,20 @@ function CategorizedItemSections(props: {
 function Container(props: {
   label: string;
   container?: GearContainer;
-  magazineClasses: Set<string>;
 }): JSX.Element {
   const { t } = useI18n();
-  const groups = () => categorizeGearItems(props.container?.items, props.magazineClasses);
+  const groups = () => categorizeGearItems(props.container?.items);
   return (
     <div class={styles.gearBlock}>
       <div class={styles.blockTitle}>
         {props.label}
-        <span>{props.container?.name || t("profile_none")}</span>
+        <span>{gearItemName(props.container) || t("profile_none")}</span>
       </div>
       <Show
         when={filledGearCategories(groups()).length}
         fallback={<span class={styles.empty}>{t("profile_empty")}</span>}
       >
-        <CategorizedItemSections items={props.container?.items} magazineClasses={props.magazineClasses} />
+        <CategorizedItemSections items={props.container?.items} />
       </Show>
     </div>
   );
@@ -859,18 +858,18 @@ export function PlayerProfileCard(props: Props): JSX.Element {
                     <SnapshotMeta event={snapshotEvent("inventorySnapshot")} />
                     <div class={styles.equipped}>
                       <span>
-                        {t("profile_head")}: {gear().headgear?.name || t("profile_none")}
+                        {t("profile_head")}: {gearItemName(gear().headgear) || t("profile_none")}
                       </span>
                       <span>
-                        {t("profile_face")}: {gear().goggles?.name || t("profile_none")}
+                        {t("profile_face")}: {gearItemName(gear().goggles) || t("profile_none")}
                       </span>
                     </div>
                     <div class={styles.gearBlock}>
                       <div class={styles.blockTitle}>{t("profile_weapons")}</div>
-                      <For each={gear().weapons}>
+                      <For each={weaponsInSlotOrder(gear().weapons)}>
                         {(weapon) => (
                           <div class={styles.weapon}>
-                            <b>{weapon.name}</b>
+                            <b>{gearItemName(weapon)}</b>
                             <small>{weapon.slot}</small>
                             <ItemList items={weapon.attachments} />
                           </div>
@@ -881,25 +880,12 @@ export function PlayerProfileCard(props: Props): JSX.Element {
                       </Show>
                       <CategorizedItemSections
                         items={magazinesNotInContainers(gear())}
-                        magazineClasses={magazineClassSet(gear().magazines)}
                         alwaysLabel
                       />
                     </div>
-                    <Container
-                      label={t("profile_uniform")}
-                      container={gear().uniform}
-                      magazineClasses={magazineClassSet(gear().magazines)}
-                    />
-                    <Container
-                      label={t("profile_vest")}
-                      container={gear().vest}
-                      magazineClasses={magazineClassSet(gear().magazines)}
-                    />
-                    <Container
-                      label={t("profile_backpack")}
-                      container={gear().backpack}
-                      magazineClasses={magazineClassSet(gear().magazines)}
-                    />
+                    <Container label={t("profile_uniform")} container={gear().uniform} />
+                    <Container label={t("profile_vest")} container={gear().vest} />
+                    <Container label={t("profile_backpack")} container={gear().backpack} />
                     <div class={styles.gearBlock}>
                       <div class={styles.blockTitle}>{t("profile_assigned")}</div>
                       <ItemList items={gear().assignedItems} />
@@ -1251,7 +1237,7 @@ export function PlayerProfileCard(props: Props): JSX.Element {
                 return (
                   <div class={styles.radioRow}>
                     <div>
-                      <b>{entry.name || entry.class}</b>
+                      <b>{gearItemName(entry)}</b>
                       <span>
                         {entry.mod} {entry.type}
                         {entry.additional ? ` ${t("profile_radio_additional")}` : ""}

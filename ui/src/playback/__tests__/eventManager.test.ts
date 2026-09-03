@@ -371,20 +371,20 @@ describe("EventManager", () => {
         unitId: 7,
         playerUid: "uid",
         reason: "periodic",
-        weightKg: 12,
+        massUnits: 120,
         load: 0.2,
-        uniform: { class: "", name: "", items: [] },
-        vest: { class: "", name: "", items: [] },
-        backpack: { class: "", name: "", items: [] },
-        headgear: { class: "", name: "" },
-        goggles: { class: "", name: "" },
+        uniform: { class: "", items: [] },
+        vest: { class: "", items: [] },
+        backpack: { class: "", items: [] },
+        headgear: { class: "" },
+        goggles: { class: "" },
         weapons: [],
         magazines: [],
         assignedItems: [],
       });
       const second = new PlayerSnapshotEvent(20, "inventorySnapshot", 2, {
         ...first.payload,
-        weightKg: 18,
+        massUnits: 180,
       });
 
       mgr.addEvent(first);
@@ -467,7 +467,7 @@ describe("EventManager", () => {
       const orphan = new PlayerSnapshotEvent(20, "radioSnapshot", 1, {
         unitId: 7,
         diffOf: 10,
-        set: { radios: [{ class: "TFAR_anprc152_1", name: "AN/PRC-152" }] },
+        set: { radios: [{ class: "TFAR_anprc152_1" }] },
       });
 
       mgr.addEvent(orphan);
@@ -475,7 +475,7 @@ describe("EventManager", () => {
 
       expect(orphan.payload).toEqual({
         unitId: 7,
-        radios: [{ class: "TFAR_anprc152_1", name: "AN/PRC-152" }],
+        radios: [{ class: "TFAR_anprc152_1" }],
       });
     });
 
