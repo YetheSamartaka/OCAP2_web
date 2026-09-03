@@ -50,14 +50,20 @@ func TestParserV1_ParsesConvertedRecording(t *testing.T) {
 		byType[event.Type]++
 
 		switch event.Type {
-		case "inventorySnapshot", "medicalSnapshot", "staminaSnapshot", "radioSnapshot", "serverFps":
+		case "inventorySnapshot", "medicalSnapshot", "staminaSnapshot", "radioSnapshot", "serverFps",
+			"zeusEntity", "zeusRemoteControl", "zeusCamera":
 			// The payload survives as JSON in the generic message field, which is
 			// what the web decoder parses back out on the other side.
 			require.NotEmpty(t, event.Message, "%s at frame %d lost its payload", event.Type, event.FrameNum)
 			var payload map[string]interface{}
 			require.NoError(t, json.Unmarshal([]byte(event.Message), &payload),
 				"%s at frame %d is not valid JSON", event.Type, event.FrameNum)
-			if event.Type != "serverFps" {
+			switch event.Type {
+			case "serverFps":
+			case "zeusEntity", "zeusRemoteControl", "zeusCamera":
+				require.Contains(t, payload, "curatorId",
+					"%s at frame %d has no curatorId to key it by", event.Type, event.FrameNum)
+			default:
 				require.Contains(t, payload, "unitId",
 					"%s at frame %d has no unitId to key it by", event.Type, event.FrameNum)
 			}

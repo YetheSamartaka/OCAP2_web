@@ -23,6 +23,11 @@ import { CapturedEvent } from "./events/capturedEvent";
 import { TerminalHackEvent } from "./events/terminalHackEvent";
 import { PlayerSnapshotEvent } from "./events/playerSnapshotEvent";
 import { ServerFpsEvent } from "./events/serverFpsEvent";
+import {
+  ZeusCameraEvent,
+  ZeusEntityEvent,
+  ZeusRemoteControlEvent,
+} from "./events/zeusEvents";
 import { Unit } from "./entities/unit";
 import { Vehicle } from "./entities/vehicle";
 
@@ -73,6 +78,12 @@ function createGameEvent(def: EventDef): GameEvent | null {
       return null;
     case "serverFps":
       return new ServerFpsEvent(def.frameNum, id, def.fps);
+    case "zeusEntity":
+      return new ZeusEntityEvent(def.frameNum, id, def.payload);
+    case "zeusRemoteControl":
+      return new ZeusRemoteControlEvent(def.frameNum, id, def.payload);
+    case "zeusCamera":
+      return new ZeusCameraEvent(def.frameNum, id, def.payload);
     default:
       return null;
   }
@@ -372,6 +383,21 @@ export class PlaybackEngine {
     // Fold diff-encoded player snapshots back into full snapshots
     this.eventManager.reconstructPlayerSnapshots();
 
+    for (const zeus of this.eventManager.getZeusEntities()) {
+      if (this.entityManager.getEntity(zeus.curatorId)) continue;
+      this.entityManager.addEntity({
+        id: zeus.curatorId,
+        type: "zeus",
+        name: zeus.name,
+        side: "VIRTUAL",
+        groupName: "Zeus",
+        isPlayer: true,
+        startFrame: zeus.startFrame,
+        endFrame: manifest.endFrame,
+        role: "Zeus",
+      });
+    }
+
     // Resolve entity references on hit/killed events
     this.eventManager.resolveReferences(this.entityManager);
 
@@ -613,6 +639,61 @@ export class PlaybackEngine {
         }
         snapshots.set(entity.id, snap);
       }
+    }
+
+    for (const entity of this.entityManager.getAll()) {
+      if (!(entity instanceof Unit) || entity.type !== "zeus") continue;
+      if (frame < entity.startFrame || frame > entity.endFrame) continue;
+
+      const zeus = this.eventManager.getZeusState(entity.id, frame);
+      if (!zeus) continue;
+
+      let position = snapshots.get(entity.id)?.position;
+      let direction = snapshots.get(entity.id)?.direction ?? 0;
+      let side = zeus.side;
+      let name = entity.name;
+      let fov: number | undefined;
+      let pitch: number | undefined;
+      let controllingUnitId: number | undefined;
+
+      if (zeus.controllingUnitId !== null) {
+        const host = snapshots.get(zeus.controllingUnitId);
+        const hostEntity = this.entityManager.getEntity(zeus.controllingUnitId);
+        if (!host && !zeus.camera) continue;
+        if (host) {
+          position = host.position;
+          direction = host.direction;
+          if (host.side) side = host.side;
+        } else if (zeus.camera) {
+          position = [zeus.camera.x, zeus.camera.y];
+          direction = zeus.camera.dir;
+        }
+        const hostName = host?.name ?? (hostEntity instanceof Unit ? hostEntity.name : null);
+        name = hostName ? `${entity.name} controlling ${hostName}` : entity.name;
+        controllingUnitId = zeus.controllingUnitId;
+      } else if (zeus.camera) {
+        position = [zeus.camera.x, zeus.camera.y];
+        direction = zeus.camera.dir;
+        fov = zeus.camera.fov;
+        pitch = zeus.camera.pitch;
+      }
+
+      if (!position) continue;
+
+      snapshots.set(entity.id, {
+        id: entity.id,
+        position,
+        direction,
+        alive: 1,
+        side,
+        name,
+        iconType: "zeus",
+        isPlayer: true,
+        isInVehicle: false,
+        fov,
+        pitch,
+        controllingUnitId,
+      });
     }
 
     this._setEntitySnapshots(snapshots);

@@ -12,13 +12,14 @@ import { CrosshairIcon, ChevronRightIcon } from "../../../components/Icons";
 import styles from "./SidePanel.module.css";
 import { PlayerProfileCard } from "./PlayerProfileCard";
 
-const SIDES: Side[] = ["WEST", "EAST", "GUER", "CIV"];
+const SIDES: Side[] = ["WEST", "EAST", "GUER", "CIV", "VIRTUAL"];
 
 const SIDE_LABELS: Record<Side, string> = {
   WEST: "BLUFOR",
   EAST: "OPFOR",
   GUER: "IND",
   CIV: "CIV",
+  VIRTUAL: "VIRTUAL",
 };
 
 interface GroupData {

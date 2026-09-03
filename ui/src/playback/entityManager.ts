@@ -14,12 +14,12 @@ export class EntityManager {
 
   /**
    * Create a Unit or Vehicle from an EntityDef and register it.
-   * Type 'man' produces a Unit; everything else produces a Vehicle.
+   * Type 'man' or 'zeus' produces a Unit; everything else produces a Vehicle.
    */
   addEntity(def: EntityDef): Entity {
     let entity: Entity;
 
-    if (def.type === "man") {
+    if (def.type === "man" || def.type === "zeus") {
       entity = new Unit(
         def.id,
         def.name,
@@ -31,7 +31,7 @@ export class EntityManager {
         def.groupName,
         def.role ?? "",
         def.positions ?? null,
-        "man",
+        def.type === "zeus" ? "zeus" : "man",
         def.framesFired ?? null,
       );
     } else {

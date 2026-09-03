@@ -69,6 +69,8 @@ function mapSideString(raw: string): Side {
     case "INDEPENDENT": return "GUER";
     case "CIV":
     case "CIVILIAN": return "CIV";
+    case "VIRTUAL":
+    case "LOGIC": return "VIRTUAL";
     default: return "CIV";
   }
 }
@@ -192,6 +194,18 @@ function convertEvent(pb: PbEvent): EventDef | null {
         const payload = JSON.parse(pb.message) as { fps?: unknown };
         if (typeof payload?.fps !== "number" || !Number.isFinite(payload.fps) || payload.fps < 0) return null;
         return { frameNum, type, fps: payload.fps };
+      } catch {
+        return null;
+      }
+    }
+    case "zeusEntity":
+    case "zeusRemoteControl":
+    case "zeusCamera": {
+      try {
+        const payload = JSON.parse(pb.message);
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+        if (typeof payload.curatorId !== "number") return null;
+        return { frameNum, type, payload } as EventDef;
       } catch {
         return null;
       }

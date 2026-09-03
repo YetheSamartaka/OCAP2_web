@@ -85,6 +85,8 @@ export function useRenderBridge(
           name: snap.name,
           isPlayer,
           crew,
+          fov: snap.fov,
+          pitch: snap.pitch,
         });
         markerHandles.set(id, handle);
       }
@@ -99,6 +101,8 @@ export function useRenderBridge(
         isInVehicle: snap.isInVehicle,
         hit: hitEntityIds.has(id),
         crew,
+        fov: snap.fov,
+        pitch: snap.pitch,
       });
 
       if (snap.firedTargets) {

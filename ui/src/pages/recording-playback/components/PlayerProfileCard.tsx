@@ -17,7 +17,7 @@ import type {
 import { useEngine } from "../../../hooks/useEngine";
 import { useI18n } from "../../../hooks/useLocale";
 import { useRenderer } from "../../../hooks/useRenderer";
-import type { Unit } from "../../../playback/entities/unit";
+import { Unit } from "../../../playback/entities/unit";
 import { PlayerSnapshotEvent } from "../../../playback/events/playerSnapshotEvent";
 import { formatTime } from "../../../playback/time";
 import type { BriefingMarkerHandle } from "../../../renderers/renderer.types";
@@ -340,8 +340,23 @@ export function PlayerProfileCard(props: Props): JSX.Element {
   // resolves immediately against data that is already loaded.
   const [snapshotsLoading, setSnapshotsLoading] = createSignal(false);
 
+  const snapshotUnitId = createMemo(() => {
+    engine.currentFrame();
+    if (props.unit.type !== "zeus") return props.unit.id;
+    return (
+      engine.eventManager.getZeusState(props.unit.id, engine.currentFrame())
+        ?.controllingUnitId ?? props.unit.id
+    );
+  });
+  const controllingHostName = createMemo(() => {
+    const unitId = engine.entitySnapshots().get(props.unit.id)?.controllingUnitId;
+    if (unitId == null) return "";
+    const host = engine.entityManager.getEntity(unitId);
+    return host instanceof Unit ? host.name || String(unitId) : "";
+  });
+
   createEffect(() => {
-    const unitId = props.unit.id;
+    const unitId = snapshotUnitId();
     setSelectedPart(null);
     setRangeRadio(null);
     setDiffing(false);
@@ -350,7 +365,7 @@ export function PlayerProfileCard(props: Props): JSX.Element {
     setSnapshotsLoading(true);
     void engine.ensurePlayerSnapshots(unitId).finally(() => {
       // Ignore a load that finished after the user moved to another player.
-      if (props.unit.id === unitId) setSnapshotsLoading(false);
+      if (snapshotUnitId() === unitId) setSnapshotsLoading(false);
     });
   });
 
@@ -359,7 +374,7 @@ export function PlayerProfileCard(props: Props): JSX.Element {
     engine.playerSnapshotsVersion();
     const kinds = new Set<PlayerSnapshotType>();
     for (const entry of TAB_DEFS) {
-      if (engine.eventManager.getFirstPlayerSnapshotFrame(props.unit.id, entry.type) !== undefined) {
+      if (engine.eventManager.getFirstPlayerSnapshotFrame(snapshotUnitId(), entry.type) !== undefined) {
         kinds.add(entry.type);
       }
     }
@@ -379,10 +394,10 @@ export function PlayerProfileCard(props: Props): JSX.Element {
   const snapshots = createMemo(() => {
     engine.currentFrame();
     engine.playerSnapshotsVersion();
-    return engine.eventManager.getPlayerSnapshots(props.unit.id, engine.currentFrame());
+    return engine.eventManager.getPlayerSnapshots(snapshotUnitId(), engine.currentFrame());
   });
   const toFrame = () => toPinned() ?? engine.currentFrame();
-  const snapshotsAt = (frame: number) => engine.eventManager.getPlayerSnapshots(props.unit.id, frame);
+  const snapshotsAt = (frame: number) => engine.eventManager.getPlayerSnapshots(snapshotUnitId(), frame);
   const snapshotEvent = (type: PlayerSnapshotType): PlayerSnapshotEvent | undefined =>
     snapshots().get(type);
   const payload = <T,>(type: PlayerSnapshotType): T | undefined =>
@@ -465,7 +480,8 @@ export function PlayerProfileCard(props: Props): JSX.Element {
     const entries = radio()?.radios ?? [];
     const index = entries.findIndex((entry, i) => radioKey(entry, i) === selected);
     const entry = index >= 0 ? entries[index] : undefined;
-    const snapshot = engine.entitySnapshots().get(props.unit.id);
+    const snapshot = engine.entitySnapshots().get(snapshotUnitId())
+      ?? engine.entitySnapshots().get(props.unit.id);
     const grid = demGrid();
 
     if (!entry || !snapshot || !selected) {
@@ -607,7 +623,7 @@ export function PlayerProfileCard(props: Props): JSX.Element {
   const yesNo = (value: unknown): string =>
     value === true ? t("profile_yes") : value === false ? t("profile_no") : String(value ?? "—");
   const missingSnapshotNote = (type: PlayerSnapshotType, labelKey: string): string => {
-    const first = engine.eventManager.getFirstPlayerSnapshotFrame(props.unit.id, type);
+    const first = engine.eventManager.getFirstPlayerSnapshotFrame(snapshotUnitId(), type);
     if (first === undefined) return t("profile_missing", { label: t(labelKey) });
     return t("profile_first_at", { label: t(labelKey), frame: first });
   };
@@ -664,11 +680,14 @@ export function PlayerProfileCard(props: Props): JSX.Element {
 
   return (
     <aside class={styles.card} aria-label={cardLabel()}>
-      <header class={styles.header} style={{ "border-top-color": SIDE_COLORS_UI[props.unit.side] }}>
+      <header class={styles.header} style={{ "border-top-color": SIDE_COLORS_UI[engine.entitySnapshots().get(props.unit.id)?.side ?? props.unit.side] }}>
         <div>
           <div class={styles.eyebrow}>
             {props.unit.groupName || t("ungrouped")} ·{" "}
             {props.unit.role || (props.unit.isPlayer ? t("profile_role_player") : t("ai_label"))}
+            <Show when={controllingHostName()}>
+              {(name) => ` · ${t("zeus_controlling", { name: name() })}`}
+            </Show>
           </div>
           <h2>
             {props.unit.name

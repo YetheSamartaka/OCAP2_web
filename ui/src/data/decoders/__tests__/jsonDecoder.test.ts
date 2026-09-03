@@ -41,6 +41,27 @@ describe("JsonDecoder.decodeManifest", () => {
     expect(manifest.events).toEqual([{ frameNum: 0, type: "serverFps", fps: 47.25 }]);
   });
 
+  it("decodes additive Zeus events and skips malformed payloads", () => {
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "Zeus",
+      endFrame: 100,
+      captureDelay: 1,
+      events: [
+        [2, "zeusEntity", { curatorId: 90, name: "Danny", playerUid: "7656", bodyUnitId: -1 }],
+        [4, "zeusCamera", { curatorId: 90, x: 1, y: 2, dir: 90, fov: 0.75 }],
+        [8, "zeusRemoteControl", { curatorId: 90, unitId: 7, active: true }],
+        [9, "zeusCamera", { x: 1, y: 2 }],
+      ],
+    }));
+
+    expect(manifest.events).toEqual([
+      { frameNum: 2, type: "zeusEntity", payload: { curatorId: 90, name: "Danny", playerUid: "7656", bodyUnitId: -1 } },
+      { frameNum: 4, type: "zeusCamera", payload: { curatorId: 90, x: 1, y: 2, dir: 90, fov: 0.75 } },
+      { frameNum: 8, type: "zeusRemoteControl", payload: { curatorId: 90, unitId: 7, active: true } },
+    ]);
+  });
+
   it("passes diff-encoded snapshots through untouched", () => {
     const diff = { unitId: 7, diffOf: 10, set: { ace: { heartRate: 133 } }, unset: ["kat.spo2"] };
     const manifest = decoder.decodeManifest(toBuffer({

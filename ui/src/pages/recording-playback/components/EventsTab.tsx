@@ -23,6 +23,7 @@ function sideColor(side?: string): string {
     case "EAST": return SIDE_COLORS_UI.EAST;
     case "GUER": return SIDE_COLORS_UI.GUER;
     case "CIV": return SIDE_COLORS_UI.CIV;
+    case "VIRTUAL": return SIDE_COLORS_UI.VIRTUAL;
     default: return "#888";
   }
 }

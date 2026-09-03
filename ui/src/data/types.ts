@@ -2,11 +2,12 @@ import type { ArmaCoord } from "../utils/coordinates";
 import type { AcreRadioPropagation, TfarRadioPropagation } from "./radioPropagation";
 
 /** Faction side. */
-export type Side = "WEST" | "EAST" | "GUER" | "CIV";
+export type Side = "WEST" | "EAST" | "GUER" | "CIV" | "VIRTUAL";
 
 /** Entity class used for icon/behavior selection. */
 export type EntityType =
   | "man"
+  | "zeus"
   | "car"
   | "tank"
   | "apc"
@@ -272,6 +273,45 @@ export interface ServerFpsEventDef {
   fps: number;
 }
 
+export interface ZeusEntityPayload {
+  curatorId: number;
+  name: string;
+  playerUid: string;
+  bodyUnitId: number;
+}
+
+export interface ZeusRemoteControlPayload {
+  curatorId: number;
+  unitId: number;
+  active: boolean;
+  playerUid?: string;
+  playerName?: string;
+}
+
+export interface ZeusCameraPayload {
+  curatorId: number;
+  x: number;
+  y: number;
+  dir: number;
+  fov: number;
+  pitch?: number;
+}
+
+export interface ZeusEntityEventDef {
+  type: "zeusEntity";
+  payload: ZeusEntityPayload;
+}
+
+export interface ZeusRemoteControlEventDef {
+  type: "zeusRemoteControl";
+  payload: ZeusRemoteControlPayload;
+}
+
+export interface ZeusCameraEventDef {
+  type: "zeusCamera";
+  payload: ZeusCameraPayload;
+}
+
 export type EventDef = { frameNum: number } & (
   | HitKilledEventDef
   | ConnectEventDef
@@ -284,6 +324,9 @@ export type EventDef = { frameNum: number } & (
   | TfarSettingsEventDef
   | AcreSettingsEventDef
   | ServerFpsEventDef
+  | ZeusEntityEventDef
+  | ZeusRemoteControlEventDef
+  | ZeusCameraEventDef
 );
 
 // --------------- Markers ---------------

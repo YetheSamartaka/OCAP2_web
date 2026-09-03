@@ -187,6 +187,11 @@ describe("Unit", () => {
       const u = new Unit(1, "Test", "man", 0, 10, "CIV", true, "G1");
       expect(u.sideClass).toBe("civ");
     });
+
+    it("VIRTUAL -> virtual", () => {
+      const u = new Unit(1, "Zeus", "zeus", 0, 10, "VIRTUAL", true, "Zeus");
+      expect(u.sideClass).toBe("virtual");
+    });
   });
 
   describe("sideColour", () => {
@@ -474,6 +479,20 @@ describe("EntityManager", () => {
       expect(entity).toBeInstanceOf(Unit);
       expect(entity.id).toBe(1);
       expect(entity.name).toBe("Rifleman");
+    });
+
+    it("creates a Unit for type 'zeus'", () => {
+      const entity = mgr.addEntity(unitDef({
+        id: 90,
+        type: "zeus",
+        name: "Danny",
+        side: "VIRTUAL",
+        groupName: "Zeus",
+        role: "Zeus",
+      }));
+      expect(entity).toBeInstanceOf(Unit);
+      expect(entity.iconType).toBe("zeus");
+      expect(entity.side).toBe("VIRTUAL");
     });
 
     it("creates a Vehicle for type 'car'", () => {

@@ -120,6 +120,9 @@ function mapSide(rawSide: string): Side {
     case "CIV":
     case "CIVILIAN":
       return "CIV";
+    case "VIRTUAL":
+    case "LOGIC":
+      return "VIRTUAL";
     default:
       return "CIV";
   }
@@ -333,6 +336,14 @@ function convertEvent(raw: RawJsonEvent): EventDef | null {
       const fps = (raw[2] as { fps?: unknown } | undefined)?.fps;
       if (typeof fps !== "number" || !Number.isFinite(fps) || fps < 0) return null;
       return { frameNum, type, fps };
+    }
+    case "zeusEntity":
+    case "zeusRemoteControl":
+    case "zeusCamera": {
+      const payload = raw[2];
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+      if (typeof (payload as { curatorId?: unknown }).curatorId !== "number") return null;
+      return { frameNum, type, payload } as EventDef;
     }
     default:
       // Unknown event types: skip

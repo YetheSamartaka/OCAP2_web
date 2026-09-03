@@ -39,6 +39,8 @@ export interface EntityMarkerOpts {
   name: string;
   isPlayer: boolean;
   crew?: CrewInfo;
+  fov?: number;
+  pitch?: number;
 }
 
 export interface EntityMarkerState {
@@ -53,6 +55,9 @@ export interface EntityMarkerState {
   /** When true, show the "hit" flash icon instead of the normal side icon. */
   hit?: boolean;
   crew?: CrewInfo;
+  /** Arma getObjectFOV when drawing a Zeus camera cone. */
+  fov?: number;
+  pitch?: number;
 }
 
 // --------------- Briefing markers ---------------

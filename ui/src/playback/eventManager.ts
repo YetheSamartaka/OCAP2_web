@@ -5,8 +5,14 @@ import { GameEvent } from "./events/gameEvent";
 import { HitKilledEvent } from "./events/hitKilledEvent";
 import { PlayerSnapshotEvent } from "./events/playerSnapshotEvent";
 import { ServerFpsEvent } from "./events/serverFpsEvent";
+import {
+  ZeusCameraEvent,
+  ZeusEntityEvent,
+  ZeusRemoteControlEvent,
+} from "./events/zeusEvents";
 import { applySnapshotDiff, isSnapshotDiff } from "../data/snapshotDiff";
 import type { PlayerSnapshotPayload, PlayerSnapshotType } from "../data/types";
+import type { ZeusCameraSample, ZeusEntityInfo, ZeusFrameState } from "./zeus";
 
 /**
  * Manages all mission events for a playback session.
@@ -18,6 +24,9 @@ export class EventManager {
   private frameIndex: Map<number, GameEvent[]> = new Map();
   private playerSnapshots = new Map<number, Map<PlayerSnapshotType, PlayerSnapshotEvent[]>>();
   private serverFpsEvents: ServerFpsEvent[] = [];
+  private zeusEntities = new Map<number, ZeusEntityInfo>();
+  private zeusRemoteControl: ZeusRemoteControlEvent[] = [];
+  private zeusCameras = new Map<number, ZeusCameraEvent[]>();
 
   /** Add an event and index it by frame number. */
   addEvent(event: GameEvent): void {
@@ -36,6 +45,28 @@ export class EventManager {
     if (event instanceof ServerFpsEvent) {
       this.serverFpsEvents.push(event);
       this.serverFpsEvents.sort((a, b) => a.frameNum - b.frameNum);
+      return;
+    }
+    if (event instanceof ZeusEntityEvent) {
+      this.zeusEntities.set(event.payload.curatorId, {
+        curatorId: event.payload.curatorId,
+        name: event.payload.name,
+        playerUid: event.payload.playerUid,
+        bodyUnitId: event.payload.bodyUnitId,
+        startFrame: event.frameNum,
+      });
+      return;
+    }
+    if (event instanceof ZeusRemoteControlEvent) {
+      this.zeusRemoteControl.push(event);
+      this.zeusRemoteControl.sort((a, b) => a.frameNum - b.frameNum);
+      return;
+    }
+    if (event instanceof ZeusCameraEvent) {
+      const series = this.zeusCameras.get(event.payload.curatorId) ?? [];
+      series.push(event);
+      series.sort((a, b) => a.frameNum - b.frameNum);
+      this.zeusCameras.set(event.payload.curatorId, series);
       return;
     }
     this.events.push(event);
@@ -142,6 +173,71 @@ export class EventManager {
     return { current: samples[samples.length - 1].fps, average, median };
   }
 
+  /** Zeus identities discovered in this recording, in curatorId order. */
+  getZeusEntities(): ZeusEntityInfo[] {
+    return [...this.zeusEntities.values()].sort((a, b) => a.curatorId - b.curatorId);
+  }
+
+  /** Occupancy + last camera for one Zeus at or before `frame`. */
+  getZeusState(curatorId: number, frame: number): ZeusFrameState | null {
+    const info = this.zeusEntities.get(curatorId);
+    if (!info || frame < info.startFrame) return null;
+
+    let controllingUnitId: number | null = null;
+    let controllingName: string | null = null;
+    for (const event of this.zeusRemoteControl) {
+      if (event.frameNum > frame) break;
+      if (event.payload.curatorId !== curatorId) continue;
+      if (event.payload.active) {
+        controllingUnitId = event.payload.unitId;
+        controllingName = event.payload.playerName ?? info.name;
+      } else if (event.payload.unitId === controllingUnitId) {
+        controllingUnitId = null;
+        controllingName = null;
+      }
+    }
+
+    let camera: ZeusCameraSample | null = null;
+    const series = this.zeusCameras.get(curatorId);
+    if (series) {
+      for (let i = series.length - 1; i >= 0; i--) {
+        const sample = series[i];
+        if (sample.frameNum <= frame) {
+          camera = {
+            x: sample.payload.x,
+            y: sample.payload.y,
+            dir: sample.payload.dir,
+            fov: sample.payload.fov,
+            pitch: sample.payload.pitch ?? 0,
+          };
+          break;
+        }
+      }
+    }
+
+    if (controllingUnitId === null && camera === null) return null;
+
+    return {
+      curatorId,
+      name: info.name,
+      controllingUnitId,
+      controllingName,
+      camera,
+      side: "VIRTUAL",
+    };
+  }
+
+  /** Curator who was remote-controlling `unitId` at `frame`, if any. */
+  getZeusControllingUnit(unitId: number, frame: number): number | null {
+    let curatorId: number | null = null;
+    for (const event of this.zeusRemoteControl) {
+      if (event.frameNum > frame) break;
+      if (event.payload.unitId !== unitId) continue;
+      curatorId = event.payload.active ? event.payload.curatorId : null;
+    }
+    return curatorId;
+  }
+
   /**
    * Resolve entity references on HitKilledEvent instances.
    * Populates names, sides, and computes kill counts.
@@ -190,6 +286,14 @@ export class EventManager {
           causer.killCount++;
           if (event.isFriendlyFire()) {
             causer.teamKillCount++;
+          }
+          const curatorId = this.getZeusControllingUnit(event.causedById, event.frameNum);
+          if (curatorId !== null) {
+            const zeus = entityManager.getEntity(curatorId);
+            if (zeus instanceof Unit) {
+              zeus.killCount++;
+              if (event.isFriendlyFire()) zeus.teamKillCount++;
+            }
           }
         }
         // Attach current score to the event (even for self-kills)
@@ -240,6 +344,13 @@ export class EventManager {
         if (event.isFriendlyFire()) {
           teamKills.set(event.causedById, (teamKills.get(event.causedById) ?? 0) + 1);
         }
+        const curatorId = this.getZeusControllingUnit(event.causedById, event.frameNum);
+        if (curatorId !== null) {
+          kills.set(curatorId, (kills.get(curatorId) ?? 0) + 1);
+          if (event.isFriendlyFire()) {
+            teamKills.set(curatorId, (teamKills.get(curatorId) ?? 0) + 1);
+          }
+        }
       }
     }
 
@@ -252,5 +363,8 @@ export class EventManager {
     this.frameIndex = new Map();
     this.playerSnapshots = new Map();
     this.serverFpsEvents = [];
+    this.zeusEntities = new Map();
+    this.zeusRemoteControl = [];
+    this.zeusCameras = new Map();
   }
 }

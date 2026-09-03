@@ -39,6 +39,30 @@ describe("UnitsTab", () => {
     expect(screen.queryByText("IND")).toBeNull();
     // CIV tab should NOT exist since there are no CIV units
     expect(screen.queryByText("CIV")).toBeNull();
+    expect(screen.queryByText("VIRTUAL")).toBeNull();
+  });
+
+  it("lists Zeus entities under VIRTUAL", () => {
+    const { engine, renderer } = createTestEngine();
+    engine.loadRecording(
+      makeManifest(
+        [unitDef({ id: 7, name: "Possessed", side: "EAST", groupName: "AI", role: "Rifleman" })],
+        [
+          { frameNum: 0, type: "zeusEntity", payload: { curatorId: 90, name: "Danny", playerUid: "7656", bodyUnitId: -1 } },
+          { frameNum: 0, type: "zeusCamera", payload: { curatorId: 90, x: 100, y: 200, dir: 0, fov: 0.75 } },
+        ],
+      ),
+    );
+
+    render(() => (
+      <TestProviders engine={engine} renderer={renderer}>
+        <UnitsTab />
+      </TestProviders>
+    ));
+
+    expect(screen.getByText("VIRTUAL")).toBeTruthy();
+    fireEvent.click(screen.getByText("VIRTUAL"));
+    expect(screen.getByText("Danny")).toBeTruthy();
   });
 
   it("shows unit names in the list", () => {

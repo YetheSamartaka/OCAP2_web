@@ -140,6 +140,29 @@ describe("ProtobufDecoder.decodeManifest", () => {
     ]);
   });
 
+  it("decodes additive Zeus payloads from the generic event message", () => {
+    const buffer = encodePb(PbManifest, {
+      version: 1,
+      worldName: "Altis",
+      missionName: "Zeus",
+      endFrame: 100,
+      chunkSize: 300,
+      captureDelayMs: 1000,
+      chunkCount: 1,
+      events: [
+        { frameNum: 2, type: "zeusEntity", message: JSON.stringify({ curatorId: 90, name: "Danny", playerUid: "7656", bodyUnitId: -1 }) },
+        { frameNum: 4, type: "zeusCamera", message: JSON.stringify({ curatorId: 90, x: 1, y: 2, dir: 90, fov: 0.75 }) },
+        { frameNum: 8, type: "zeusRemoteControl", message: JSON.stringify({ curatorId: 90, unitId: 7, active: true }) },
+      ],
+    });
+
+    expect(decoder.decodeManifest(buffer).events).toEqual([
+      { frameNum: 2, type: "zeusEntity", payload: { curatorId: 90, name: "Danny", playerUid: "7656", bodyUnitId: -1 } },
+      { frameNum: 4, type: "zeusCamera", payload: { curatorId: 90, x: 1, y: 2, dir: 90, fov: 0.75 } },
+      { frameNum: 8, type: "zeusRemoteControl", payload: { curatorId: 90, unitId: 7, active: true } },
+    ]);
+  });
+
   it("passes diff-encoded snapshots through untouched", () => {
     const diff = { unitId: 7, diffOf: 10, set: { vanilla: { load: 0.61 } } };
     const buffer = encodePb(PbManifest, {

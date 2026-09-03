@@ -7,13 +7,14 @@ import { useCustomize } from "../../../hooks/useCustomize";
 import { useI18n } from "../../../hooks/useLocale";
 import styles from "./SidePanel.module.css";
 
-const SIDES: Side[] = ["WEST", "EAST", "GUER", "CIV"];
+const SIDES: Side[] = ["WEST", "EAST", "GUER", "CIV", "VIRTUAL"];
 
 const SIDE_LABELS: Record<Side, string> = {
   WEST: "BLUFOR",
   EAST: "OPFOR",
   GUER: "IND",
   CIV: "CIV",
+  VIRTUAL: "VIRTUAL",
 };
 
 interface SideStats {
