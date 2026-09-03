@@ -1,5 +1,12 @@
 import type { Side } from "../data/types";
 
+/**
+ * Frames after a remote-control stop during which that unit's kills still
+ * count for Zeus. Capture is typically 1 s, and `eh_killed` may wait on ACE
+ * `lastDamageSource` after occupancy has already cleared.
+ */
+export const ZEUS_RC_KILL_GRACE_FRAMES = 30;
+
 /** Convert Arma getObjectFOV (tan of half-angle) to horizontal degrees. */
 export function armaFovToDegrees(fov: number): number {
   if (!Number.isFinite(fov) || fov <= 0) return 75;

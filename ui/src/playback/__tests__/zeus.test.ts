@@ -131,6 +131,111 @@ describe("EventManager Zeus occupancy", () => {
     expect(mgr.getKillDeathCounts(20).kills.get(90)).toBe(1);
     expect(mgr.getKillDeathCounts(9).kills.get(90)).toBeUndefined();
   });
+
+  it("attributes a possessed-unit kill shortly after remote-control stop", () => {
+    const entities = new EntityManager();
+    entities.addEntity(unitDef({ id: 5, name: "Marek", side: "WEST" }));
+    entities.addEntity(unitDef({ id: 6, name: "Tung", side: "EAST" }));
+    entities.addEntity(unitDef({
+      id: 90,
+      type: "zeus",
+      name: "YetheSamartaka",
+      side: "VIRTUAL",
+      groupName: "Zeus",
+      role: "Zeus",
+      isPlayer: true,
+    }));
+
+    mgr.addEvent(new ZeusRemoteControlEvent(123, 5, {
+      curatorId: 90,
+      unitId: 5,
+      active: true,
+      playerName: "YetheSamartaka",
+    }));
+    mgr.addEvent(new ZeusRemoteControlEvent(149, 6, {
+      curatorId: 90,
+      unitId: 5,
+      active: false,
+    }));
+    mgr.addEvent(new HitKilledEvent(166, "killed", 1, 6, 5, 43, "CZ BREN 2"));
+    mgr.resolveReferences(entities);
+
+    expect((entities.getEntity(90) as Unit).killCount).toBe(1);
+    expect(mgr.getKillDeathCounts(166).kills.get(90)).toBe(1);
+    expect(mgr.getZeusControllingUnit(5, 166)).toBeNull();
+    expect(mgr.getKillDeathCounts(200).kills.get(90)).toBe(1);
+
+    mgr.addEvent(new HitKilledEvent(200, "killed", 2, 6, 5, 10, "CZ BREN 2"));
+    expect(mgr.getKillDeathCounts(200).kills.get(90)).toBe(1);
+    expect(mgr.getKillDeathCounts(200).kills.get(5)).toBe(2);
+  });
+});
+
+describe("EventManager Zeus body kill attribution", () => {
+  it("attributes the Zeus player's body kills to the VIRTUAL curator", () => {
+    const mgr = new EventManager();
+    const entities = new EntityManager();
+    entities.addEntity(unitDef({
+      id: 0,
+      name: "YetheSamartaka",
+      side: "CIV",
+      isPlayer: true,
+    }));
+    entities.addEntity(unitDef({ id: 2, name: "Horacek", side: "WEST" }));
+    entities.addEntity(unitDef({ id: 3, name: "Hall", side: "WEST" }));
+    entities.addEntity(unitDef({
+      id: 1,
+      type: "zeus",
+      name: "YetheSamartaka",
+      side: "VIRTUAL",
+      groupName: "Zeus",
+      role: "Zeus",
+      isPlayer: true,
+    }));
+
+    mgr.addEvent(new ZeusEntityEvent(1, 1, {
+      curatorId: 1,
+      name: "YetheSamartaka",
+      playerUid: "7656",
+      bodyUnitId: 0,
+    }));
+    mgr.addEvent(new HitKilledEvent(91, "killed", 1, 2, 0, 2, "L85A2"));
+    mgr.addEvent(new HitKilledEvent(120, "killed", 2, 3, 0, 26, "L85A2"));
+    mgr.resolveReferences(entities);
+
+    const zeus = entities.getEntity(1) as Unit;
+    const body = entities.getEntity(0) as Unit;
+    expect(zeus.killCount).toBe(2);
+    expect(body.killCount).toBe(2);
+    expect(mgr.getKillDeathCounts(91).kills.get(1)).toBe(1);
+    expect(mgr.getKillDeathCounts(120).kills.get(1)).toBe(2);
+    expect(mgr.getKillDeathCounts(90).kills.get(1)).toBeUndefined();
+  });
+
+  it("does not double-count when curatorId and bodyUnitId are the same", () => {
+    const mgr = new EventManager();
+    const entities = new EntityManager();
+    entities.addEntity(unitDef({
+      id: 0,
+      type: "zeus",
+      name: "Danny",
+      side: "VIRTUAL",
+      isPlayer: true,
+    }));
+    entities.addEntity(unitDef({ id: 2, name: "Victim", side: "EAST" }));
+
+    mgr.addEvent(new ZeusEntityEvent(1, 1, {
+      curatorId: 0,
+      name: "Danny",
+      playerUid: "7656",
+      bodyUnitId: 0,
+    }));
+    mgr.addEvent(new HitKilledEvent(10, "killed", 1, 2, 0, 5, "L85A2"));
+    mgr.resolveReferences(entities);
+
+    expect((entities.getEntity(0) as Unit).killCount).toBe(1);
+    expect(mgr.getKillDeathCounts(10).kills.get(0)).toBe(1);
+  });
 });
 
 describe("PlaybackEngine Zeus synthesis", () => {

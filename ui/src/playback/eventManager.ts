@@ -12,7 +12,7 @@ import {
 } from "./events/zeusEvents";
 import { applySnapshotDiff, isSnapshotDiff } from "../data/snapshotDiff";
 import type { PlayerSnapshotPayload, PlayerSnapshotType } from "../data/types";
-import type { ZeusCameraSample, ZeusEntityInfo, ZeusFrameState } from "./zeus";
+import { ZEUS_RC_KILL_GRACE_FRAMES, type ZeusCameraSample, type ZeusEntityInfo, type ZeusFrameState } from "./zeus";
 
 /**
  * Manages all mission events for a playback session.
@@ -239,6 +239,50 @@ export class EventManager {
   }
 
   /**
+   * Curator who should also receive a kill recorded as `causedById`.
+   *
+   * Vanilla/ACE instigator is still the Zeus player's body (`player`) while
+   * flying or after leaving a possessed unit, so those kills land on
+   * `bodyUnitId` rather than the synthesized VIRTUAL curator id. Occupancy
+   * covers a live possess; a short grace after `active: false` covers the
+   * kill EH firing after the poll already recorded a leave (pure-virtual
+   * Zeus has no body to fall back on).
+   */
+  getZeusAttributedKiller(causedById: number, frame: number): number | null {
+    const fromRc = this.getZeusControllingUnit(causedById, frame)
+      ?? this.getZeusRecentlyControllingUnit(causedById, frame);
+    if (fromRc !== null && fromRc !== causedById) return fromRc;
+
+    for (const info of this.zeusEntities.values()) {
+      if (frame < info.startFrame) continue;
+      if (info.bodyUnitId < 0 || info.bodyUnitId !== causedById) continue;
+      if (info.curatorId === causedById) continue;
+      return info.curatorId;
+    }
+    return null;
+  }
+
+  /** Last curator who released `unitId`, if `frame` is still inside the kill grace. */
+  private getZeusRecentlyControllingUnit(unitId: number, frame: number): number | null {
+    let stopCuratorId: number | null = null;
+    let stopFrame = -1;
+    for (const event of this.zeusRemoteControl) {
+      if (event.frameNum > frame) break;
+      if (event.payload.unitId !== unitId) continue;
+      if (event.payload.active) {
+        stopCuratorId = null;
+        stopFrame = -1;
+      } else {
+        stopCuratorId = event.payload.curatorId;
+        stopFrame = event.frameNum;
+      }
+    }
+    if (stopCuratorId === null || stopFrame < 0) return null;
+    if (frame - stopFrame > ZEUS_RC_KILL_GRACE_FRAMES) return null;
+    return stopCuratorId;
+  }
+
+  /**
    * Resolve entity references on HitKilledEvent instances.
    * Populates names, sides at the event frame, and computes kill counts.
    *
@@ -287,7 +331,7 @@ export class EventManager {
           if (event.isFriendlyFire()) {
             causer.teamKillCount++;
           }
-          const curatorId = this.getZeusControllingUnit(event.causedById, event.frameNum);
+          const curatorId = this.getZeusAttributedKiller(event.causedById, event.frameNum);
           if (curatorId !== null) {
             const zeus = entityManager.getEntity(curatorId);
             if (zeus instanceof Unit) {
@@ -331,6 +375,10 @@ export class EventManager {
         // Vehicle kill for causer (non-self kills only)
         if (event.causedById !== event.victimId) {
           vehicleKills.set(event.causedById, (vehicleKills.get(event.causedById) ?? 0) + 1);
+          const curatorId = this.getZeusAttributedKiller(event.causedById, event.frameNum);
+          if (curatorId !== null) {
+            vehicleKills.set(curatorId, (vehicleKills.get(curatorId) ?? 0) + 1);
+          }
         }
         continue;
       }
@@ -344,7 +392,7 @@ export class EventManager {
         if (event.isFriendlyFire()) {
           teamKills.set(event.causedById, (teamKills.get(event.causedById) ?? 0) + 1);
         }
-        const curatorId = this.getZeusControllingUnit(event.causedById, event.frameNum);
+        const curatorId = this.getZeusAttributedKiller(event.causedById, event.frameNum);
         if (curatorId !== null) {
           kills.set(curatorId, (kills.get(curatorId) ?? 0) + 1);
           if (event.isFriendlyFire()) {
