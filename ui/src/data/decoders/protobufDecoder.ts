@@ -20,6 +20,7 @@ import {
 import {
   Manifest as PbManifest,
   Chunk as PbChunk,
+  PlayerSnapshotSeries as PbPlayerSnapshotSeries,
   EntityType as PbEntityType,
   Side as PbSide,
   type EntityDef as PbEntityDef,
@@ -303,7 +304,19 @@ export class ProtobufDecoder implements DecoderStrategy {
       addonVersion: pb.addonVersion || undefined,
       radioPropagation: extracted.radioPropagation,
       acrePropagation: extracted.acrePropagation,
+      snapshotUnitIds: pb.snapshotUnitIds,
     };
+  }
+
+  /**
+   * Decode one player's snapshot sidecar (snapshots/<unitId>.pb). The events are
+   * the same shape the manifest carries, so they go through convertEvent
+   * unchanged and the diff chain rebuilds exactly as it does for a recording
+   * that still keeps its snapshots in the manifest.
+   */
+  decodePlayerSnapshots(buffer: ArrayBuffer): EventDef[] {
+    const pb = PbPlayerSnapshotSeries.decode(new Uint8Array(buffer));
+    return pb.events.map(convertEvent).filter((e): e is EventDef => e !== null);
   }
 
   decodeChunk(buffer: ArrayBuffer): ChunkData {

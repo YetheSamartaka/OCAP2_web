@@ -2635,6 +2635,7 @@ export const translations: Record<string, Record<Locale, string>> = {
   profile_reason_change: { en: "change", ru: "изменение", de: "Änderung", cs: "změna", it: "cambio", fr: "changement", fi: "muutos", uk: "зміна" },
   profile_reason_death: { en: "death", ru: "смерть", de: "Tod", cs: "smrt", it: "morte", fr: "mort", fi: "kuolema", uk: "смерть" },
   profile_empty: { en: "Empty", ru: "Пусто", de: "Leer", cs: "Prázdné", it: "Vuoto", fr: "Vide", fi: "Tyhjä", uk: "Порожньо" },
+  profile_loading: { en: "Loading player data…", ru: "Загрузка данных игрока…", de: "Spielerdaten werden geladen…", cs: "Načítání dat hráče…", it: "Caricamento dati giocatore…", fr: "Chargement des données du joueur…", fi: "Ladataan pelaajan tietoja…", uk: "Завантаження даних гравця…" },
   profile_none: { en: "None", ru: "Нет", de: "Keine", cs: "Žádné", it: "Nessuno", fr: "Aucun", fi: "Ei ole", uk: "Немає" },
   profile_yes: { en: "Yes", ru: "Да", de: "Ja", cs: "Ano", it: "Sì", fr: "Oui", fi: "Kyllä", uk: "Так" },
   profile_no: { en: "No", ru: "Нет", de: "Nein", cs: "Ne", it: "No", fr: "Non", fi: "Ei", uk: "Ні" },

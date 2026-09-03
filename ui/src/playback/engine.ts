@@ -126,6 +126,10 @@ export class PlaybackEngine {
 
   private _captureDelayMs: Accessor<number>;
   private _setCaptureDelayMs: (v: number) => void;
+  private _playerSnapshotsVersion: Accessor<number>;
+  private _setPlayerSnapshotsVersion: (v: (prev: number) => number) => void;
+  /** unitId -> in-flight or settled sidecar load, so a reopen does not refetch. */
+  private playerSnapshotLoads = new Map<number, Promise<void>>();
 
   // ─── Playback loop state ───
   /** Max delta (ms) before treating a gap as a background-tab resume. */
@@ -176,6 +180,10 @@ export class PlaybackEngine {
     const [captureDelayMs, setCaptureDelayMs] = createSignal(1000);
     this._captureDelayMs = captureDelayMs;
     this._setCaptureDelayMs = setCaptureDelayMs;
+
+    const [playerSnapshotsVersion, setPlayerSnapshotsVersion] = createSignal(0);
+    this._playerSnapshotsVersion = playerSnapshotsVersion;
+    this._setPlayerSnapshotsVersion = setPlayerSnapshotsVersion;
   }
 
   // ─── Public signal accessors ───
@@ -206,6 +214,10 @@ export class PlaybackEngine {
   }
   get captureDelayMs(): Accessor<number> {
     return this._captureDelayMs;
+  }
+  /** Bumped whenever a player's snapshots finish loading, so the card re-reads. */
+  get playerSnapshotsVersion(): Accessor<number> {
+    return this._playerSnapshotsVersion;
   }
   get worldConfig(): WorldConfig | undefined {
     return this._worldConfig;
@@ -320,6 +332,7 @@ export class PlaybackEngine {
     this._setFollowTarget(null);
     this.entityManager.clear();
     this.eventManager.clear();
+    this.playerSnapshotLoads.clear();
 
     this.manifest = manifest;
     this.chunkManager = chunkManager ?? null;
@@ -372,6 +385,56 @@ export class PlaybackEngine {
     // Initial snapshot computation
     this.computeSnapshots(0);
     this._setActiveEvents(this.eventManager.getActiveEvents(0));
+  }
+
+  /**
+   * Make sure a player's detail snapshots are loaded before the profile card
+   * reads them.
+   *
+   * A JSON recording, and a chunked recording converted before the sidecars
+   * existed, both carry their snapshots in the manifest — those are already in
+   * the event manager and this resolves immediately. Otherwise the unit's
+   * sidecar is fetched once and folded into the same index, so every reader
+   * downstream sees one shape regardless of where the data came from.
+   */
+  ensurePlayerSnapshots(unitId: number): Promise<void> {
+    const existing = this.playerSnapshotLoads.get(unitId);
+    if (existing) return existing;
+
+    const chunkManager = this.chunkManager;
+    if (!chunkManager || !this.manifest?.snapshotUnitIds?.includes(unitId)) {
+      const resolved = Promise.resolve();
+      this.playerSnapshotLoads.set(unitId, resolved);
+      return resolved;
+    }
+
+    const load = chunkManager
+      .loadPlayerSnapshots(unitId)
+      .then((defs) => {
+        for (const def of defs) {
+          const event = createGameEvent(def);
+          if (event) this.eventManager.addEvent(event);
+        }
+        this.eventManager.reconstructPlayerSnapshotsFor(unitId);
+        this._setPlayerSnapshotsVersion((v) => v + 1);
+      })
+      .catch((error) => {
+        // A missing or corrupt sidecar must not break playback; the card falls
+        // back to whatever the manifest already carried for this unit.
+        console.error(`Failed to load snapshots for unit ${unitId}`, error);
+        this.playerSnapshotLoads.delete(unitId);
+      });
+
+    this.playerSnapshotLoads.set(unitId, load);
+    return load;
+  }
+
+  /** Whether a player has snapshots at all, before any sidecar is fetched. */
+  hasPlayerSnapshots(unitId: number): boolean {
+    return (
+      this.eventManager.hasPlayerSnapshots(unitId) ||
+      (this.manifest?.snapshotUnitIds?.includes(unitId) ?? false)
+    );
   }
 
   dispose(): void {

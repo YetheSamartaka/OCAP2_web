@@ -440,4 +440,12 @@ export class JsonDecoder implements DecoderStrategy {
         "The entire operation is contained in the manifest.",
     );
   }
+
+  /**
+   * A JSON recording carries its player snapshots inline with every other
+   * event, so there is no sidecar to read and nothing to add.
+   */
+  decodePlayerSnapshots(_buffer: ArrayBuffer): EventDef[] {
+    return [];
+  }
 }

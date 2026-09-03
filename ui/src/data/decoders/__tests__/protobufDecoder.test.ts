@@ -5,6 +5,7 @@ import {
   Manifest as PbManifest,
   Chunk as PbChunk,
   EntityType as PbEntityType,
+  PlayerSnapshotSeries as PbPlayerSnapshotSeries,
   Side as PbSide,
 } from "../generated/ocap.pb";
 
@@ -14,6 +15,85 @@ function encodePb<T>(msg: { encode: (m: T) => { finish: () => Uint8Array }; from
   const bytes = msg.encode(msg.fromPartial(data)).finish();
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
+
+// ─── Player snapshot sidecar tests ───
+
+describe("ProtobufDecoder.decodeManifest snapshot index", () => {
+  const decoder = new ProtobufDecoder();
+
+  const base = {
+    version: 1,
+    worldName: "Altis",
+    missionName: "Snapshots",
+    endFrame: 100,
+    chunkSize: 300,
+    captureDelayMs: 1000,
+    chunkCount: 1,
+  };
+
+  it("exposes the units whose snapshots live in a sidecar", () => {
+    const manifest = decoder.decodeManifest(
+      encodePb(PbManifest, { ...base, snapshotUnitIds: [7, 12] }),
+    );
+    expect(manifest.snapshotUnitIds).toEqual([7, 12]);
+  });
+
+  it("reports no sidecars for a recording that predates them", () => {
+    const manifest = decoder.decodeManifest(encodePb(PbManifest, base));
+    expect(manifest.snapshotUnitIds).toEqual([]);
+  });
+});
+
+
+describe("ProtobufDecoder.decodePlayerSnapshots", () => {
+  const decoder = new ProtobufDecoder();
+
+  it("decodes a unit's snapshot series, keeping recorded order", () => {
+    const buffer = encodePb(PbPlayerSnapshotSeries, {
+      unitId: 7,
+      events: [
+        {
+          frameNum: 10,
+          type: "inventorySnapshot",
+          message: JSON.stringify({ unitId: 7, massUnits: 695 }),
+        },
+        {
+          frameNum: 40,
+          type: "inventorySnapshot",
+          message: JSON.stringify({ unitId: 7, diffOf: 10, set: { massUnits: 700 } }),
+        },
+      ],
+    });
+
+    expect(decoder.decodePlayerSnapshots(buffer)).toEqual([
+      { frameNum: 10, type: "inventorySnapshot", payload: { unitId: 7, massUnits: 695 } },
+      {
+        frameNum: 40,
+        type: "inventorySnapshot",
+        payload: { unitId: 7, diffOf: 10, set: { massUnits: 700 } },
+      },
+    ]);
+  });
+
+  it("drops entries whose payload cannot be read", () => {
+    const buffer = encodePb(PbPlayerSnapshotSeries, {
+      unitId: 7,
+      events: [
+        { frameNum: 10, type: "medicalSnapshot", message: "not json" },
+        { frameNum: 20, type: "medicalSnapshot", message: JSON.stringify({ unitId: 7 }) },
+      ],
+    });
+
+    const decoded = decoder.decodePlayerSnapshots(buffer);
+    expect(decoded).toHaveLength(1);
+    expect(decoded[0].frameNum).toBe(20);
+  });
+
+  it("returns an empty list for an empty series", () => {
+    expect(decoder.decodePlayerSnapshots(encodePb(PbPlayerSnapshotSeries, { unitId: 7 })))
+      .toEqual([]);
+  });
+});
 
 // ─── Manifest decoding tests ───
 

@@ -316,8 +316,19 @@ data/
 ├── mission_name.gz              # Original JSON (preserved)
 └── mission_name/                # Chunked binary format
     ├── manifest.pb              # Metadata, entities, events
-    └── chunks/
-        ├── 0000.pb              # Frames 0-299
-        ├── 0001.pb              # Frames 300-599
+    ├── chunks/
+    │   ├── 0000.pb              # Frames 0-299
+    │   ├── 0001.pb              # Frames 300-599
+    │   └── ...
+    └── snapshots/               # Per-player detail, fetched on demand
+        ├── 7.pb                 # Every snapshot recorded for unit 7
         └── ...
 ```
+
+### Player detail snapshots
+
+Per-player detail (inventory, medical, stamina, radio) is kept in `snapshots/<unitId>.pb` instead
+of the manifest, and fetched only when that player's profile is opened.
+
+JSON recordings are unaffected. Chunked recordings converted before this keep their snapshots in
+the manifest and still play; re-run `convert --input` to move them out.

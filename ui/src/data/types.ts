@@ -327,6 +327,12 @@ export interface Manifest {
   radioPropagation?: TfarRadioPropagation;
   /** ACRE coverage settings stamped by the recorder, or omitted on older files. */
   acrePropagation?: AcreRadioPropagation;
+  /**
+   * Units whose player snapshots live in their own file rather than in `events`.
+   * Only chunked protobuf recordings converted since the sidecars existed set
+   * this; everywhere else the snapshots are in `events` and this stays empty.
+   */
+  snapshotUnitIds?: number[];
 }
 
 /** A decoded chunk: entity ID -> array of states for this chunk's frames. */

@@ -57,6 +57,7 @@ function makeMockChunkManager(chunkData: ChunkData | null = null): ChunkManager 
     clear: vi.fn(),
     getManifest: vi.fn().mockReturnValue(null),
     setCallbacks: vi.fn(),
+    loadPlayerSnapshots: vi.fn().mockResolvedValue([]),
   } as unknown as ChunkManager;
 }
 
@@ -87,6 +88,77 @@ describe("PlaybackEngine", () => {
     engine.dispose();
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  // ─── Player snapshot sidecars ───
+
+  describe("ensurePlayerSnapshots", () => {
+    it("loads a unit's sidecar into the event manager and folds its diffs", async () => {
+      const cm = makeMockChunkManager();
+      (cm.loadPlayerSnapshots as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { frameNum: 10, type: "medicalSnapshot", payload: { unitId: 7, ace: { heartRate: 80 } } },
+        {
+          frameNum: 20,
+          type: "medicalSnapshot",
+          payload: { unitId: 7, diffOf: 10, set: { ace: { heartRate: 130 } } },
+        },
+      ]);
+      engine.loadRecording(makeManifest({ snapshotUnitIds: [7] }), cm);
+
+      expect(engine.eventManager.hasPlayerSnapshots(7)).toBe(false);
+      await engine.ensurePlayerSnapshots(7);
+
+      expect(cm.loadPlayerSnapshots).toHaveBeenCalledWith(7);
+      expect(engine.eventManager.getPlayerSnapshots(7, 20).get("medicalSnapshot")!.payload)
+        .toEqual({ unitId: 7, ace: { heartRate: 130 } });
+      expect(engine.playerSnapshotsVersion()).toBe(1);
+    });
+
+    it("fetches a unit at most once", async () => {
+      const cm = makeMockChunkManager();
+      engine.loadRecording(makeManifest({ snapshotUnitIds: [7] }), cm);
+
+      await Promise.all([engine.ensurePlayerSnapshots(7), engine.ensurePlayerSnapshots(7)]);
+      await engine.ensurePlayerSnapshots(7);
+
+      expect(cm.loadPlayerSnapshots).toHaveBeenCalledTimes(1);
+    });
+
+    // A JSON recording, and a chunked one converted before the sidecars existed,
+    // both keep their snapshots in the manifest — already loaded, nothing to fetch.
+    it("does not fetch when the snapshots are already in the manifest", async () => {
+      const cm = makeMockChunkManager();
+      engine.loadRecording(
+        makeManifest({
+          events: [
+            { frameNum: 10, type: "medicalSnapshot", payload: { unitId: 7, ace: { heartRate: 80 } } },
+          ] as any,
+        }),
+        cm,
+      );
+
+      await engine.ensurePlayerSnapshots(7);
+
+      expect(cm.loadPlayerSnapshots).not.toHaveBeenCalled();
+      expect(engine.eventManager.hasPlayerSnapshots(7)).toBe(true);
+      expect(engine.hasPlayerSnapshots(7)).toBe(true);
+    });
+
+    it("resolves without a chunk manager at all", async () => {
+      engine.loadRecording(makeManifest({ snapshotUnitIds: [7] }));
+      await expect(engine.ensurePlayerSnapshots(7)).resolves.toBeUndefined();
+    });
+
+    // A missing or corrupt sidecar must not break playback.
+    it("survives a failed sidecar fetch", async () => {
+      const cm = makeMockChunkManager();
+      (cm.loadPlayerSnapshots as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("404"));
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      engine.loadRecording(makeManifest({ snapshotUnitIds: [7] }), cm);
+
+      await expect(engine.ensurePlayerSnapshots(7)).resolves.toBeUndefined();
+      expect(engine.eventManager.hasPlayerSnapshots(7)).toBe(false);
+    });
   });
 
   // ─── loadRecording ───

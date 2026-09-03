@@ -70,23 +70,39 @@ export class EventManager {
    * Must run once after all events are added and before the card reads them.
    */
   reconstructPlayerSnapshots(): void {
-    for (const byType of this.playerSnapshots.values()) {
-      for (const series of byType.values()) {
-        series.sort((a, b) => a.frameNum - b.frameNum);
-        let previous: PlayerSnapshotPayload | undefined;
-        for (const event of series) {
-          if (isSnapshotDiff(event.raw)) {
-            // Without a base the keyframe was lost, so the diff is all we know.
-            event.payload = previous
-              ? applySnapshotDiff(previous, event.raw)
-              : ({ unitId: event.raw.unitId, ...event.raw.set } as PlayerSnapshotPayload);
-          } else {
-            event.payload = event.raw;
-          }
-          previous = event.payload;
+    for (const unitId of this.playerSnapshots.keys()) {
+      this.reconstructPlayerSnapshotsFor(unitId);
+    }
+  }
+
+  /**
+   * Rebuild one player's diff-encoded snapshots. Snapshots that arrive from a
+   * sidecar land after load, so the fold has to be runnable per unit; a series
+   * is self-contained, which is why sharding by unit keeps the chain intact.
+   */
+  reconstructPlayerSnapshotsFor(unitId: number): void {
+    const byType = this.playerSnapshots.get(unitId);
+    if (!byType) return;
+    for (const series of byType.values()) {
+      series.sort((a, b) => a.frameNum - b.frameNum);
+      let previous: PlayerSnapshotPayload | undefined;
+      for (const event of series) {
+        if (isSnapshotDiff(event.raw)) {
+          // Without a base the keyframe was lost, so the diff is all we know.
+          event.payload = previous
+            ? applySnapshotDiff(previous, event.raw)
+            : ({ unitId: event.raw.unitId, ...event.raw.set } as PlayerSnapshotPayload);
+        } else {
+          event.payload = event.raw;
         }
+        previous = event.payload;
       }
     }
+  }
+
+  /** Whether any snapshot has been indexed for a player. */
+  hasPlayerSnapshots(unitId: number): boolean {
+    return (this.playerSnapshots.get(unitId)?.size ?? 0) > 0;
   }
 
   /** Frame of a player's first snapshot of a type, so the UI can explain an empty card. */

@@ -396,6 +396,48 @@ describe("EventManager", () => {
       expect(mgr.getAll()).toEqual([]);
     });
 
+    // Snapshots that arrive from a sidecar land after the initial load, so the
+    // fold has to be runnable for one unit without disturbing the others.
+    it("rebuilds one unit's series when its snapshots arrive later", () => {
+      mgr.addEvent(new PlayerSnapshotEvent(10, "medicalSnapshot", 1, {
+        unitId: 3,
+        ace: { heartRate: 70 },
+      }));
+      mgr.reconstructPlayerSnapshots();
+
+      mgr.addEvent(new PlayerSnapshotEvent(10, "medicalSnapshot", 2, {
+        unitId: 7,
+        ace: { heartRate: 80, pain: 0 },
+      }));
+      mgr.addEvent(new PlayerSnapshotEvent(20, "medicalSnapshot", 3, {
+        unitId: 7,
+        diffOf: 10,
+        set: { ace: { heartRate: 130 } },
+      }));
+
+      mgr.reconstructPlayerSnapshotsFor(7);
+
+      expect(mgr.getPlayerSnapshots(7, 20).get("medicalSnapshot")!.payload).toEqual({
+        unitId: 7,
+        ace: { heartRate: 130, pain: 0 },
+      });
+      expect(mgr.getPlayerSnapshots(3, 10).get("medicalSnapshot")!.payload).toEqual({
+        unitId: 3,
+        ace: { heartRate: 70 },
+      });
+    });
+
+    it("reports whether a unit has any snapshots", () => {
+      expect(mgr.hasPlayerSnapshots(7)).toBe(false);
+      mgr.addEvent(new PlayerSnapshotEvent(10, "radioSnapshot", 1, { unitId: 7, radios: [] }));
+      expect(mgr.hasPlayerSnapshots(7)).toBe(true);
+      expect(mgr.hasPlayerSnapshots(99)).toBe(false);
+    });
+
+    it("is a no-op for a unit with no snapshots", () => {
+      expect(() => mgr.reconstructPlayerSnapshotsFor(99)).not.toThrow();
+    });
+
     it("reports the frame of the first snapshot of a type", () => {
       mgr.addEvent(new PlayerSnapshotEvent(30, "radioSnapshot", 1, { unitId: 7, radios: [] }));
       mgr.addEvent(new PlayerSnapshotEvent(10, "radioSnapshot", 2, { unitId: 7, radios: [] }));

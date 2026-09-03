@@ -121,6 +121,15 @@
   text-transform: uppercase;
 }
 
+/* Shown while a chunked recording fetches this player's snapshot sidecar. */
+.loading {
+  padding: 12px;
+  color: var(--text-dimmest);
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+}
+
 .tabs {
   display: flex;
   gap: 4px;

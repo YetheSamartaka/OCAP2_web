@@ -335,16 +335,28 @@ export function PlayerProfileCard(props: Props): JSX.Element {
     setRangeMode(mode);
   };
 
+  // A chunked recording keeps player snapshots in a per-unit sidecar rather than
+  // the manifest, so opening the card is what fetches them. Everywhere else this
+  // resolves immediately against data that is already loaded.
+  const [snapshotsLoading, setSnapshotsLoading] = createSignal(false);
+
   createEffect(() => {
-    props.unit.id;
+    const unitId = props.unit.id;
     setSelectedPart(null);
     setRangeRadio(null);
     setDiffing(false);
     setToPinned(null);
+
+    setSnapshotsLoading(true);
+    void engine.ensurePlayerSnapshots(unitId).finally(() => {
+      // Ignore a load that finished after the user moved to another player.
+      if (props.unit.id === unitId) setSnapshotsLoading(false);
+    });
   });
 
   const trackedKinds = createMemo(() => {
     engine.endFrame();
+    engine.playerSnapshotsVersion();
     const kinds = new Set<PlayerSnapshotType>();
     for (const entry of TAB_DEFS) {
       if (engine.eventManager.getFirstPlayerSnapshotFrame(props.unit.id, entry.type) !== undefined) {
@@ -366,6 +378,7 @@ export function PlayerProfileCard(props: Props): JSX.Element {
 
   const snapshots = createMemo(() => {
     engine.currentFrame();
+    engine.playerSnapshotsVersion();
     return engine.eventManager.getPlayerSnapshots(props.unit.id, engine.currentFrame());
   });
   const toFrame = () => toPinned() ?? engine.currentFrame();
@@ -812,6 +825,10 @@ export function PlayerProfileCard(props: Props): JSX.Element {
           </div>
         </Show>
       </div>
+
+      <Show when={snapshotsLoading() && availableTabs().length === 0}>
+        <div class={styles.loading}>{t("profile_loading")}</div>
+      </Show>
 
       <Show when={availableTabs().length > 0}>
         <nav class={styles.tabs} role="tablist">
