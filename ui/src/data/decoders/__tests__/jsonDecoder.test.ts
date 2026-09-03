@@ -62,6 +62,31 @@ describe("JsonDecoder.decodeManifest", () => {
     ]);
   });
 
+  it("skips empty dense-array entity holes", () => {
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "Zeus",
+      endFrame: 100,
+      captureDelay: 1,
+      entities: [
+        { id: 0, name: "", side: "", isPlayer: 0, type: "", startFrameNum: 0, positions: null },
+        {
+          id: 1,
+          type: "unit",
+          name: "Horacek",
+          side: "WEST",
+          isPlayer: 0,
+          startFrameNum: 0,
+          positions: [[[100, 200], 0, 1, 0, "Horacek", 0]],
+        },
+      ],
+    }));
+
+    expect(manifest.entities).toHaveLength(1);
+    expect(manifest.entities[0].id).toBe(1);
+    expect(manifest.entities[0].name).toBe("Horacek");
+  });
+
   it("passes diff-encoded snapshots through untouched", () => {
     const diff = { unitId: 7, diffOf: 10, set: { ace: { heartRate: 133 } }, unset: ["kat.spo2"] };
     const manifest = decoder.decodeManifest(toBuffer({

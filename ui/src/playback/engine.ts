@@ -384,7 +384,12 @@ export class PlaybackEngine {
     this.eventManager.reconstructPlayerSnapshots();
 
     for (const zeus of this.eventManager.getZeusEntities()) {
-      if (this.entityManager.getEntity(zeus.curatorId)) continue;
+      const existing = this.entityManager.getEntity(zeus.curatorId);
+      // Zeus borrows nextId without :SOLDIER:CREATE:, so the dense entities[]
+      // export leaves a nameless hole at that index. Do not treat the hole as
+      // a real unit — overwrite it so VIRTUAL playback can use the id.
+      if (existing && existing.type === "zeus") continue;
+      if (existing && existing.name) continue;
       this.entityManager.addEntity({
         id: zeus.curatorId,
         type: "zeus",

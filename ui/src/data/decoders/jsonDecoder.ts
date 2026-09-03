@@ -409,7 +409,9 @@ export class JsonDecoder implements DecoderStrategy {
     const text = new TextDecoder().decode(buffer);
     const data: RawJsonOperation = JSON.parse(text);
 
-    const entities: EntityDef[] = (data.entities ?? []).map(convertEntity);
+    const entities: EntityDef[] = (data.entities ?? [])
+      .filter((raw) => Boolean(raw?.type) || Boolean(raw?.name))
+      .map(convertEntity);
     const extracted = extractRadioPropagation(
       (data.events ?? [])
         .map(convertEvent)

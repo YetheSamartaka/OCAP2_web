@@ -305,7 +305,9 @@ export class ProtobufDecoder implements DecoderStrategy {
       chunkSize: pb.chunkSize,
       captureDelayMs: pb.captureDelayMs,
       chunkCount: pb.chunkCount,
-      entities: pb.entities.map(convertEntityDef),
+      entities: pb.entities
+        .filter((raw) => Boolean(raw.name) || raw.type !== PbEntityType.ENTITY_TYPE_UNKNOWN)
+        .map(convertEntityDef),
       events: extracted.events,
       markers: pb.markers.map(convertMarkerDef),
       times: pb.times.map((t) => ({

@@ -193,4 +193,45 @@ describe("PlaybackEngine Zeus synthesis", () => {
     expect(possessing?.name).toContain("controlling");
     expect(possessing?.fov).toBeUndefined();
   });
+
+  it("synthesizes VIRTUAL Zeus when curatorId 0 is an empty entity hole", () => {
+    engine.loadRecording(makeManifest({
+      entities: [
+        unitDef({
+          id: 0,
+          name: "",
+          type: "unknown",
+          side: "CIV",
+        }),
+        unitDef({
+          id: 1,
+          name: "Horacek",
+          side: "WEST",
+        }),
+      ],
+      events: [
+        {
+          frameNum: 1,
+          type: "zeusEntity",
+          payload: { curatorId: 0, name: "YetheSamartaka", playerUid: "7656", bodyUnitId: -1 },
+        },
+        {
+          frameNum: 1,
+          type: "zeusCamera",
+          payload: { curatorId: 0, x: 8504, y: -902, dir: 0, fov: 1 },
+        },
+      ],
+    }));
+
+    const zeus = engine.entityManager.getEntity(0);
+    expect(zeus).toBeInstanceOf(Unit);
+    expect(zeus?.type).toBe("zeus");
+    expect(zeus?.side).toBe("VIRTUAL");
+    expect(zeus?.name).toBe("YetheSamartaka");
+    expect(engine.entityManager.getBySide("VIRTUAL")).toHaveLength(1);
+
+    engine.seekTo(1);
+    expect(engine.entitySnapshots().get(0)?.iconType).toBe("zeus");
+    expect(engine.entitySnapshots().get(0)?.position).toEqual([8504, -902]);
+  });
 });
