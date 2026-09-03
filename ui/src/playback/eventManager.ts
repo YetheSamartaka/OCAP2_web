@@ -240,7 +240,7 @@ export class EventManager {
 
   /**
    * Resolve entity references on HitKilledEvent instances.
-   * Populates names, sides, and computes kill counts.
+   * Populates names, sides at the event frame, and computes kill counts.
    *
    * Kill score formula (matching old frontend):
    *   killCount - (teamKillCount * 2)
@@ -255,7 +255,7 @@ export class EventManager {
           event.victimName = victim.name;
           event.victimIsVehicle = victim instanceof Vehicle;
           if (victim instanceof Unit) {
-            event.victimSide = victim.side;
+            event.victimSide = victim.sideAtFrame(event.frameNum);
           }
         }
 
@@ -263,7 +263,7 @@ export class EventManager {
         if (causer) {
           event.causerName = causer.name;
           if (causer instanceof Unit) {
-            event.causerSide = causer.side;
+            event.causerSide = causer.sideAtFrame(event.frameNum);
           }
         }
       }

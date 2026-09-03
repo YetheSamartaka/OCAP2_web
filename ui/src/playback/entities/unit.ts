@@ -67,6 +67,21 @@ export class Unit extends Entity {
     return count;
   }
 
+  /**
+   * Combat side at an absolute playback frame.
+   * Prefers the per-frame position side (Zeus group-side switches, etc.)
+   * and falls back to the entity's spawn-time side so recordings without
+   * that field keep working.
+   */
+  sideAtFrame(absoluteFrame: number): Side {
+    const relative = this.getRelativeFrameIndex(absoluteFrame);
+    if (!this.isFrameOutOfBounds(relative)) {
+      const state = this.positions![relative];
+      if (state?.side) return state.side;
+    }
+    return this.side;
+  }
+
   /** CSS class for the unit's side: WEST->'blufor', EAST->'opfor', etc. */
   get sideClass(): string {
     return SIDE_CLASS[this.side] ?? "unknown";

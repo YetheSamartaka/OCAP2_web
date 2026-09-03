@@ -9,7 +9,8 @@ import {
 } from "../events/counterEvent";
 import { EventManager } from "../eventManager";
 import { EntityManager } from "../entityManager";
-import type { EntityDef } from "../../data/types";
+import { Unit } from "../entities/unit";
+import type { EntityDef, EntityState } from "../../data/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -663,6 +664,76 @@ describe("EventManager", () => {
       expect(e1.causerName).toBe("Alpha");
       expect(e2.victimName).toBe("Charlie");
       expect(e2.causerName).toBe("Bravo");
+    });
+
+    it("uses per-frame side so a Zeus-switched unit is not friendly fire", () => {
+      const westThenEast: EntityState[] = [
+        { position: [0, 0], direction: 0, alive: 1, side: "WEST" },
+        { position: [1, 1], direction: 0, alive: 1, side: "EAST" },
+      ];
+      const entityMgr = new EntityManager();
+      entityMgr.addEntity(unitDef({ id: 1, name: "Blufor", side: "WEST" }));
+      entityMgr.addEntity(unitDef({
+        id: 2,
+        name: "Switched",
+        side: "WEST",
+        startFrame: 0,
+        endFrame: 1,
+        positions: westThenEast,
+      }));
+
+      const event = new HitKilledEvent(1, "killed", 1, 2, 1, 40, "MX");
+      mgr.addEvent(event);
+      mgr.resolveReferences(entityMgr);
+
+      expect(event.victimSide).toBe("EAST");
+      expect(event.causerSide).toBe("WEST");
+      expect(event.isFriendlyFire()).toBe(false);
+      expect((entityMgr.getEntity(1) as Unit).teamKillCount).toBe(0);
+      expect(mgr.getKillDeathCounts(1).teamKills.get(1)).toBeUndefined();
+    });
+
+    it("still treats same-side kills as friendly fire at the event frame", () => {
+      const stayWest: EntityState[] = [
+        { position: [0, 0], direction: 0, alive: 1, side: "WEST" },
+        { position: [1, 1], direction: 0, alive: 1, side: "WEST" },
+      ];
+      const entityMgr = new EntityManager();
+      entityMgr.addEntity(unitDef({ id: 1, name: "Blufor", side: "WEST" }));
+      entityMgr.addEntity(unitDef({
+        id: 2,
+        name: "Teammate",
+        side: "WEST",
+        startFrame: 0,
+        endFrame: 1,
+        positions: stayWest,
+      }));
+
+      const event = new HitKilledEvent(1, "killed", 1, 2, 1, 10, "MX");
+      mgr.addEvent(event);
+      mgr.resolveReferences(entityMgr);
+
+      expect(event.isFriendlyFire()).toBe(true);
+      expect((entityMgr.getEntity(1) as Unit).teamKillCount).toBe(1);
+      expect(mgr.getKillDeathCounts(1).teamKills.get(1)).toBe(1);
+    });
+
+    it("falls back to spawn-time side when positions have no per-frame side", () => {
+      const entityMgr = new EntityManager();
+      entityMgr.addEntity(unitDef({ id: 1, name: "Alpha", side: "WEST" }));
+      entityMgr.addEntity(unitDef({
+        id: 2,
+        name: "Bravo",
+        side: "WEST",
+        positions: [{ position: [0, 0], direction: 0, alive: 1 }],
+      }));
+
+      const event = new HitKilledEvent(0, "killed", 1, 2, 1, 5, "MX");
+      mgr.addEvent(event);
+      mgr.resolveReferences(entityMgr);
+
+      expect(event.victimSide).toBe("WEST");
+      expect(event.isFriendlyFire()).toBe(true);
     });
   });
 

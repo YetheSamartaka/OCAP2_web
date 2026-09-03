@@ -4,7 +4,7 @@ import { Unit } from "../entities/unit";
 import { Vehicle } from "../entities/vehicle";
 import { Group } from "../entities/group";
 import { EntityManager } from "../entityManager";
-import type { EntityDef, EntityState } from "../../data/types";
+import type { EntityDef, EntityState, Side } from "../../data/types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -17,12 +17,14 @@ function makeState(
   dir: number,
   alive: 0 | 1 | 2 = 1,
   isInVehicle = false,
+  side?: Side,
 ): EntityState {
   return {
     position: [x, y],
     direction: dir,
     alive,
     isInVehicle,
+    ...(side ? { side } : {}),
   };
 }
 
@@ -244,6 +246,37 @@ describe("Unit", () => {
     it("initializes isInVehicle to false", () => {
       const u = new Unit(1, "Test", "man", 0, 10, "WEST", false, "G1");
       expect(u.isInVehicle).toBe(false);
+    });
+  });
+
+  describe("sideAtFrame", () => {
+    it("returns the spawn-time side when positions are missing", () => {
+      const u = new Unit(1, "Test", "man", 0, 10, "WEST", true, "G1");
+      expect(u.sideAtFrame(0)).toBe("WEST");
+      expect(u.sideAtFrame(5)).toBe("WEST");
+    });
+
+    it("returns the spawn-time side when the frame has no per-frame side", () => {
+      const positions: EntityState[] = [makeState(100, 200, 90, 1)];
+      const u = new Unit(1, "Test", "man", 0, 10, "WEST", true, "G1", "", positions);
+      expect(u.sideAtFrame(0)).toBe("WEST");
+    });
+
+    it("returns the per-frame side when it differs from spawn-time side", () => {
+      const positions: EntityState[] = [
+        makeState(100, 200, 90, 1, false, "WEST"),
+        makeState(110, 210, 95, 1, false, "EAST"),
+      ];
+      const u = new Unit(1, "Test", "man", 0, 10, "WEST", true, "G1", "", positions);
+      expect(u.sideAtFrame(0)).toBe("WEST");
+      expect(u.sideAtFrame(1)).toBe("EAST");
+    });
+
+    it("falls back to spawn-time side for frames outside the positions array", () => {
+      const positions: EntityState[] = [makeState(100, 200, 90, 1, false, "EAST")];
+      const u = new Unit(1, "Test", "man", 10, 20, "WEST", true, "G1", "", positions);
+      expect(u.sideAtFrame(0)).toBe("WEST");
+      expect(u.sideAtFrame(10)).toBe("EAST");
     });
   });
 
