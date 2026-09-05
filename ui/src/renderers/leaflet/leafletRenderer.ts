@@ -216,7 +216,9 @@ export class LeafletRenderer implements MapRenderer {
     this.useMapLibreMode = Boolean(world.maplibre);
     console.debug(`[LeafletRenderer] init: mode=${this.useMapLibreMode ? "maplibre" : "legacy"}, maplibre=${world.maplibre}, maxZoom=${world.maxZoom}, tileBaseUrl=${world.tileBaseUrl}`);
 
-    const maxZoom = this.maxNativeZoom + 2;
+    // Allow zooming past the deepest tile level. Leaflet upscales the last
+    // native tile, so this only costs sharpness — +4 gives 16x over native.
+    const maxZoom = this.maxNativeZoom + 4;
 
     // Grid layer (created early for overlay control ordering; not added to map)
     this.gridLayer = createGridLayer({
@@ -256,6 +258,7 @@ export class LeafletRenderer implements MapRenderer {
       const hideThreshold = this.useMapLibreMode ? 14 : 4;
       this.hideMarkerPopups = this.map.getZoom() <= hideThreshold;
       this.refreshPopupVisibility();
+      this.refreshBriefingLabelVisibility();
       this.fireEvent("zoom", this.map.getZoom());
     });
     this.map.on("dragstart", () => {
@@ -272,7 +275,9 @@ export class LeafletRenderer implements MapRenderer {
     this.map = L.map(container, {
       center: [worldSizeDeg / 2, worldSizeDeg / 2],
       zoom: 12,
-      maxZoom: 20,
+      // 22 is MapLibre GL's own max zoom; going past it would desync the
+      // vector basemap from the Leaflet overlay panes.
+      maxZoom: 22,
       minZoom: 10,
       zoomControl: false,
       keyboard: false,
@@ -928,7 +933,9 @@ export class LeafletRenderer implements MapRenderer {
       // Offset to the right of the marker position, matching Arma 3 in-game rendering.
       layer = L.marker([0, 0], {
         icon: L.divIcon({
-          className: "marker-text-label",
+          className: def.textClass
+            ? `marker-text-label ${def.textClass}`
+            : "marker-text-label",
           html: `<span>${def.text}</span>`,
           iconSize: [0, 0],
           iconAnchor: [-30, 0],
@@ -980,10 +987,10 @@ export class LeafletRenderer implements MapRenderer {
       layer instanceof L.Marker &&
       (layerKey === "projectileMarkers"
         ? this._projectileLabels()
-        : this._markerDisplayMode() === "all");
+        : this.briefingLabelsVisible());
     if (showLabel) layer.openPopup();
-    // Hide text labels when in "noLabels" mode
-    if (def.type.includes("Empty") && def.text && this._markerDisplayMode() !== "all") {
+    // Hide text labels when in "noLabels" mode or below the label zoom
+    if (def.type.includes("Empty") && def.text && !this.briefingLabelsVisible()) {
       const el = (layer as L.Marker).getElement?.();
       if (el) el.style.display = "none";
     }
@@ -1311,24 +1318,42 @@ export class LeafletRenderer implements MapRenderer {
       if (!this.map.hasLayer(group)) {
         group.addTo(this.map);
       }
-      // Toggle popups and text labels on briefing markers
-      group.eachLayer((layer) => {
-        if (!(layer instanceof L.Marker)) return;
-        // Text-label markers (e.g. sector names) — toggle element visibility
-        if (this.isTextLabelMarker(layer)) {
-          const el = layer.getElement?.();
-          if (el) el.style.display = mode === "all" ? "" : "none";
-          return;
-        }
-        // ICON markers with popups — toggle popup
-        if (!layer.getPopup()) return;
-        if (mode === "all") {
-          layer.openPopup();
-        } else {
-          layer.closePopup();
-        }
-      });
+      this.refreshBriefingLabelVisibility();
     }
+  }
+
+  /**
+   * Whether briefing-marker labels (trench captions, marker text, sector
+   * names) should be drawn right now. They follow markerDisplayMode and the
+   * same zoom threshold as entity name popups: zoomed out, a map full of
+   * captions hides the map itself, so labels only appear once player names do.
+   */
+  private briefingLabelsVisible(): boolean {
+    return this._markerDisplayMode() === "all" && !this.hideMarkerPopups;
+  }
+
+  /** Apply `briefingLabelsVisible()` to every briefing marker on the map. */
+  private refreshBriefingLabelVisibility(): void {
+    const group = this.layers.briefingMarkers;
+    if (!this.map.hasLayer(group)) return;
+    const visible = this.briefingLabelsVisible();
+
+    group.eachLayer((layer) => {
+      if (!(layer instanceof L.Marker)) return;
+      // Text-label markers (e.g. sector names) — toggle element visibility
+      if (this.isTextLabelMarker(layer)) {
+        const el = layer.getElement?.();
+        if (el) el.style.display = visible ? "" : "none";
+        return;
+      }
+      // ICON markers with popups — toggle popup
+      if (!layer.getPopup()) return;
+      if (visible) {
+        layer.openPopup();
+      } else {
+        layer.closePopup();
+      }
+    });
   }
 
   /**
@@ -1338,16 +1363,16 @@ export class LeafletRenderer implements MapRenderer {
    */
   private reopenBriefingMarkerPopups(group: L.LayerGroup): void {
     const isBriefing = group === this.layers.briefingMarkers;
-    const mode = this._markerDisplayMode();
+    const briefingVisible = this.briefingLabelsVisible();
     group.eachLayer((layer) => {
       if (!(layer instanceof L.Marker)) return;
       // Restore text label visibility when briefing group is re-added
       if (isBriefing && this.isTextLabelMarker(layer)) {
         const el = layer.getElement?.();
-        if (el) el.style.display = mode === "all" ? "" : "none";
+        if (el) el.style.display = briefingVisible ? "" : "none";
         return;
       }
-      if (isBriefing && mode !== "all") return;
+      if (isBriefing && !briefingVisible) return;
       if (layer.getPopup()) {
         layer.openPopup();
       }
@@ -1357,7 +1382,9 @@ export class LeafletRenderer implements MapRenderer {
   /** Check whether a marker is a text-only label (e.g. sector name). */
   private isTextLabelMarker(marker: L.Marker): boolean {
     const icon = marker.options.icon;
-    return icon instanceof L.DivIcon && icon.options.className === "marker-text-label";
+    if (!(icon instanceof L.DivIcon)) return false;
+    const className = icon.options.className ?? "";
+    return className.split(" ")[0] === "marker-text-label";
   }
 
   /**

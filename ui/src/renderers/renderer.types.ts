@@ -74,6 +74,12 @@ export interface BriefingMarkerDef {
   dashArray?: string;
   /** Which layer group to add this marker to. Defaults to "briefingMarkers". */
   layer?: "briefingMarkers" | "systemMarkers" | "projectileMarkers";
+  /**
+   * Extra CSS class for a text-only ("Empty") label, appended to
+   * `marker-text-label`. Lets one kind of label restyle itself (size, spacing)
+   * without touching sector names.
+   */
+  textClass?: string;
 }
 
 export interface BriefingMarkerState {

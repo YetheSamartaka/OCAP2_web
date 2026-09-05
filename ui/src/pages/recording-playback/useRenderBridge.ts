@@ -57,20 +57,18 @@ function pingColor(side: string): string {
 }
 
 /**
- * The text drawn beside a ping icon: one timestamp per ping, newest first, so
- * repeat pings from the same player are distinguishable at a glance. The
- * player's name is only worth the width when several players have live pings.
+ * The text drawn beside a ping icon: one `[Zeus ping] - Name - Time` line per
+ * ping, newest first, so repeat pings from the same player are distinguishable
+ * at a glance. The name is always shown so a ping is attributable on its own.
  */
 function pingLabel(
   group: ZeusPingGroup,
-  showName: boolean,
   format: (frame: number) => string,
 ): string {
-  const times = group.frames.map((frame) => escapeHtml(format(frame)));
-  if (showName && group.name) {
-    return [escapeHtml(group.name), ...times].join("<br>");
-  }
-  return times.join("<br>");
+  const name = escapeHtml(group.name || `Unit ${group.unitId}`);
+  return group.frames
+    .map((frame) => `[Zeus ping] - ${name} - ${escapeHtml(format(frame))}`)
+    .join("<br>");
 }
 
 interface PingRender {
@@ -187,8 +185,6 @@ export function useRenderBridge(
       engine.eventManager.getActivePings(frame, lifetime),
     );
 
-    const distinctUnits = new Set(groups.map((group) => group.unitId));
-    const showName = distinctUnits.size > 1;
     const config = engine.timeConfig;
     const format = (f: number) => formatTime(f, mode, config);
 
@@ -196,7 +192,7 @@ export function useRenderBridge(
 
     for (const group of groups) {
       live.add(group.key);
-      const labelText = pingLabel(group, showName, format);
+      const labelText = pingLabel(group, format);
       const color = pingColor(group.side);
 
       let render = pingRenders.get(group.key);
@@ -211,6 +207,7 @@ export function useRenderBridge(
           text: labelText,
           side: "GLOBAL",
           layer: "systemMarkers",
+          textClass: "zeus-ping-label",
         });
         render.labelText = labelText;
       }
@@ -219,7 +216,7 @@ export function useRenderBridge(
         render = {
           icon: renderer.createBriefingMarker({
             shape: "ICON",
-            type: "hd_warning",
+            type: "zeus",
             color,
             side: "GLOBAL",
             layer: "systemMarkers",
@@ -231,6 +228,7 @@ export function useRenderBridge(
             text: labelText,
             side: "GLOBAL",
             layer: "systemMarkers",
+            textClass: "zeus-ping-label",
           }),
           labelText,
         };
