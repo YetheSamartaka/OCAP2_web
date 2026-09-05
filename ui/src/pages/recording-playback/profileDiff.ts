@@ -79,7 +79,7 @@ export interface GearDiff {
 
 export interface FieldDelta {
   labelKey: string;
-  kind: "text" | "number" | "percent" | "bool" | "bp" | "hemorrhage";
+  kind: "text" | "number" | "percent" | "bool" | "bp" | "hemorrhage" | "stance";
   from: unknown;
   to: unknown;
   digits?: number;
@@ -579,6 +579,23 @@ export function medicalDiffIsEmpty(diff: MedicalDiff): boolean {
   );
 }
 
+/**
+ * Stance travels in the stamina snapshot as a small integer enum so the recording
+ * stores a number per sample instead of a string. Index = the recorded code;
+ * anything outside the table (an older recording has no code at all) reads as unknown.
+ */
+export const STANCE_LABEL_KEYS = [
+  "profile_stance_0",
+  "profile_stance_1",
+  "profile_stance_2",
+  "profile_stance_3",
+] as const;
+
+export function stanceLabelKey(code: unknown): string | undefined {
+  if (typeof code !== "number") return undefined;
+  return STANCE_LABEL_KEYS[code] ?? STANCE_LABEL_KEYS[0];
+}
+
 function carriedWeightKg(source?: { massUnits?: number }): number | undefined {
   if (typeof source?.massUnits === "number") return source.massUnits * MASS_UNIT_KG;
   return undefined;
@@ -617,6 +634,7 @@ export function diffStamina(
   return [
     field("profile_carried_weight", "number", carriedWeightKg(from?.vanilla) ?? carriedWeightKg(fromInv), carriedWeightKg(to?.vanilla) ?? carriedWeightKg(toInv), { digits: 1, suffix: " kg" }),
     field("profile_load", "percent", from?.vanilla?.load ?? fromInv?.load, to?.vanilla?.load ?? toInv?.load),
+    field("profile_stance", "stance", from?.vanilla?.stance, to?.vanilla?.stance),
     field("profile_sprint_reserve", "percent", fromAce ? undefined : sprintReserve(from, fromInv), toAce ? undefined : sprintReserve(to, toInv)),
     field("profile_fatigue", "percent", fromAce ? undefined : from?.vanilla?.fatigue, toAce ? undefined : to?.vanilla?.fatigue),
     field("profile_anaerobic", "percent", fromAce?.anaerobicReserve, toAce?.anaerobicReserve),

@@ -4,6 +4,7 @@ import type { MedicalLogEntry } from "../../../data/types";
 import { useI18n } from "../../../hooks/useLocale";
 import {
   GEAR_LOCATION_LABEL_KEYS,
+  stanceLabelKey,
   type BodyPartDelta,
   type DiffPolarity,
   type EquippedDelta,
@@ -81,6 +82,10 @@ function formatField(
       case "hemorrhage": {
         const index = Number(value ?? 0);
         return HEMORRHAGE_KEYS[index] ? t(HEMORRHAGE_KEYS[index]) : formatNumber(value);
+      }
+      case "stance": {
+        const key = stanceLabelKey(Number(value));
+        return key ? t(key) : formatNumber(value);
       }
       default:
         return String(value);

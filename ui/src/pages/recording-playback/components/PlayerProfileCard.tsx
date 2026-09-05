@@ -57,6 +57,7 @@ import {
   medicalDiffIsEmpty,
   radioDiffIsEmpty,
   staminaReserve as reserveAt,
+  stanceLabelKey,
 } from "../profileDiff";
 import styles from "./PlayerProfileCard.module.css";
 import { exportAceArsenal, exportVanillaArsenal } from "../arsenalExport";
@@ -1221,6 +1222,14 @@ export function PlayerProfileCard(props: Props): JSX.Element {
                 {t("profile_load")}
                 <b>{percent(loadFraction())}</b>
               </span>
+              <Show when={stanceLabelKey(vanillaStamina().stance)}>
+                {(key) => (
+                  <span>
+                    {t("profile_stance")}
+                    <b>{t(key())}</b>
+                  </span>
+                )}
+              </Show>
             </div>
             <Show when={aceFatigue()}>
               {(ace) => (
