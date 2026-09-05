@@ -6,10 +6,19 @@ import { HitKilledEvent } from "../events/hitKilledEvent";
 import {
   ZeusCameraEvent,
   ZeusEntityEvent,
+  ZeusPingEvent,
   ZeusRemoteControlEvent,
 } from "../events/zeusEvents";
 import { Unit } from "../entities/unit";
-import { armaFovToDegrees, formatUnitTypeLabel, formatZeusOccupancyName } from "../zeus";
+import {
+  ZEUS_PING_MAP_SECONDS,
+  armaFovToDegrees,
+  formatUnitTypeLabel,
+  formatZeusOccupancyName,
+  groupZeusPings,
+  zeusPingAlpha,
+  zeusPingLifetimeFrames,
+} from "../zeus";
 import { MockRenderer } from "../../renderers/mockRenderer";
 import type { EntityDef, Manifest } from "../../data/types";
 
@@ -369,5 +378,93 @@ describe("PlaybackEngine Zeus synthesis", () => {
     engine.seekTo(1);
     expect(engine.entitySnapshots().get(0)?.iconType).toBe("zeus");
     expect(engine.entitySnapshots().get(0)?.position).toEqual([8504, -902]);
+  });
+});
+
+describe("Zeus pings", () => {
+  const ping = (frameNum: number, overrides: Record<string, unknown> = {}) =>
+    new ZeusPingEvent(frameNum, frameNum, {
+      curatorId: 90,
+      unitId: 7,
+      name: "Danny",
+      side: "WEST",
+      x: 3411,
+      y: 9002,
+      ...overrides,
+    });
+
+  describe("zeusPingLifetimeFrames", () => {
+    it("is 180 frames at the default 1 s capture delay", () => {
+      expect(zeusPingLifetimeFrames(1000)).toBe(ZEUS_PING_MAP_SECONDS);
+    });
+
+    it("scales with a non-default capture delay", () => {
+      expect(zeusPingLifetimeFrames(500)).toBe(360);
+      expect(zeusPingLifetimeFrames(2000)).toBe(90);
+    });
+
+    it("falls back rather than dividing by zero", () => {
+      expect(zeusPingLifetimeFrames(0)).toBe(ZEUS_PING_MAP_SECONDS);
+    });
+  });
+
+  describe("getActivePings", () => {
+    let events: EventManager;
+
+    beforeEach(() => {
+      events = new EventManager();
+      events.addEvent(ping(100));
+    });
+
+    it("shows the ping on its own frame and until the lifetime elapses", () => {
+      expect(events.getActivePings(100, 180)).toHaveLength(1);
+      expect(events.getActivePings(279, 180)).toHaveLength(1);
+    });
+
+    it("drops the ping exactly at the end of its lifetime", () => {
+      expect(events.getActivePings(280, 180)).toEqual([]);
+    });
+
+    it("does not show a ping before it happened", () => {
+      expect(events.getActivePings(99, 180)).toEqual([]);
+    });
+
+    it("keeps the ping in the event log after it leaves the map", () => {
+      expect(events.getActiveEvents(5000)).toHaveLength(1);
+      expect(events.getActivePings(5000, 180)).toEqual([]);
+    });
+  });
+
+  describe("groupZeusPings", () => {
+    it("collapses co-located pings from one player and lists times newest first", () => {
+      const groups = groupZeusPings([ping(100), ping(160, { x: 3420, y: 9010 })]);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].frames).toEqual([160, 100]);
+      expect(groups[0].latestFrame).toBe(160);
+      expect(groups[0].position).toEqual([3420, 9010]);
+    });
+
+    it("keeps pings from the same player far apart separate", () => {
+      const groups = groupZeusPings([ping(100), ping(160, { x: 5000, y: 9002 })]);
+      expect(groups).toHaveLength(2);
+    });
+
+    it("keeps different players separate even at the same spot", () => {
+      const groups = groupZeusPings([ping(100), ping(100, { unitId: 8, name: "Horacek" })]);
+      expect(groups).toHaveLength(2);
+    });
+  });
+
+  describe("zeusPingAlpha", () => {
+    it("is solid for most of the lifetime and fades at the end", () => {
+      expect(zeusPingAlpha(100, 100, 180)).toBe(1);
+      expect(zeusPingAlpha(240, 100, 180)).toBe(1);
+      expect(zeusPingAlpha(275, 100, 180)).toBeLessThan(1);
+    });
+
+    it("is zero outside the lifetime", () => {
+      expect(zeusPingAlpha(280, 100, 180)).toBe(0);
+      expect(zeusPingAlpha(99, 100, 180)).toBe(0);
+    });
   });
 });

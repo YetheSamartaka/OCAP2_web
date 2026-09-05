@@ -9,10 +9,11 @@ import { GeneralMissionEvent } from "../../../playback/events/generalEvent";
 import { CapturedEvent } from "../../../playback/events/capturedEvent";
 import { TerminalHackEvent } from "../../../playback/events/terminalHackEvent";
 import { PlayerSnapshotEvent } from "../../../playback/events/playerSnapshotEvent";
+import { ZeusPingEvent } from "../../../playback/events/zeusEvents";
 import type { GameEvent } from "../../../playback/events/gameEvent";
 import { SIDE_COLORS_UI } from "../../../config/sideColors";
 import { formatElapsedTime } from "../../../playback/time";
-import { SkullIcon, BulletIcon, LinkIcon, ClockIcon, DoorExitIcon, ActivityIcon, FlagIcon, AlertTriangleIcon, TerminalIcon } from "../../../components/Icons";
+import { SkullIcon, BulletIcon, LinkIcon, ClockIcon, DoorExitIcon, ActivityIcon, FlagIcon, AlertTriangleIcon, TerminalIcon, TargetIcon } from "../../../components/Icons";
 import { EventFilters, DEFAULT_EVENT_FILTERS } from "./EventFilters";
 import type { EventFilterState } from "./EventFilters";
 import styles from "./SidePanel.module.css";
@@ -48,6 +49,9 @@ function eventStyle(event: GameEvent): { icon: JSX.Element; color: string } {
   if (event instanceof TerminalHackEvent) {
     return { icon: <TerminalIcon size={16} />, color: "var(--accent-warning)" };
   }
+  if (event instanceof ZeusPingEvent) {
+    return { icon: <TargetIcon size={16} />, color: SIDE_COLORS_UI.VIRTUAL };
+  }
   return { icon: <ActivityIcon size={16} />, color: "#888" };
 }
 
@@ -67,6 +71,7 @@ export function EventsTab(): JSX.Element {
     if (event instanceof ConnectEvent) return f.showConnections;
     if (event instanceof CapturedEvent) return f.showCaptures;
     if (event instanceof TerminalHackEvent) return f.showTerminalHacks;
+    if (event instanceof ZeusPingEvent) return f.showZeusPings;
     if (event instanceof EndMissionEvent || event instanceof GeneralMissionEvent) {
       return f.showMissionEvents;
     }
@@ -111,6 +116,8 @@ export function EventsTab(): JSX.Element {
           if (!event.unitName.toLowerCase().includes(text)) return false;
         } else if (event instanceof TerminalHackEvent) {
           if (!event.unitName.toLowerCase().includes(text)) return false;
+        } else if (event instanceof ZeusPingEvent) {
+          if (!event.payload.name.toLowerCase().includes(text)) return false;
         }
       }
 
@@ -126,6 +133,8 @@ export function EventsTab(): JSX.Element {
     if (event instanceof HitKilledEvent) {
       engine.panToEntity(event.victimId);
     } else if (event instanceof CapturedEvent && event.position) {
+      engine.panToPosition(event.position);
+    } else if (event instanceof ZeusPingEvent) {
       engine.panToPosition(event.position);
     }
   };
@@ -256,6 +265,21 @@ export function EventsTab(): JSX.Element {
                                 {event.side ? <> <span style={{ color: sideColor(event.side) }}>({event.side})</span></> : null}
                               </>
                           }
+                        </span>
+                        <span class={styles.eventMeta}>
+                          <span class={styles.eventTime}>
+                            <ClockIcon size={14} />
+                            {timeStr(event.frameNum)}
+                          </span>
+                        </span>
+                      </>
+                    ) : event instanceof ZeusPingEvent ? (
+                      <>
+                        <span class={styles.eventMessage}>
+                          <span style={{ color: sideColor(event.payload.side) }}>
+                            {event.payload.name}
+                          </span>
+                          {" "}{t("pinged_zeus")}
                         </span>
                         <span class={styles.eventMeta}>
                           <span class={styles.eventTime}>

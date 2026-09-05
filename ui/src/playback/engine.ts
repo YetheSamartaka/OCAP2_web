@@ -26,6 +26,7 @@ import { ServerFpsEvent } from "./events/serverFpsEvent";
 import {
   ZeusCameraEvent,
   ZeusEntityEvent,
+  ZeusPingEvent,
   ZeusRemoteControlEvent,
 } from "./events/zeusEvents";
 import { Unit } from "./entities/unit";
@@ -85,6 +86,8 @@ function createGameEvent(def: EventDef): GameEvent | null {
       return new ZeusRemoteControlEvent(def.frameNum, id, def.payload);
     case "zeusCamera":
       return new ZeusCameraEvent(def.frameNum, id, def.payload);
+    case "zeusPing":
+      return new ZeusPingEvent(def.frameNum, id, def.payload);
     default:
       return null;
   }

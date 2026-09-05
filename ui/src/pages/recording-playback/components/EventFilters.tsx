@@ -14,6 +14,7 @@ export interface EventFilterState {
   showCaptures: boolean;
   showTerminalHacks: boolean;
   showMissionEvents: boolean;
+  showZeusPings: boolean;
   sideFilter: SideFilter;
 }
 
@@ -24,6 +25,7 @@ export const DEFAULT_EVENT_FILTERS: EventFilterState = {
   showCaptures: true,
   showTerminalHacks: true,
   showMissionEvents: true,
+  showZeusPings: true,
   sideFilter: "all",
 };
 
@@ -41,6 +43,7 @@ const EVENT_TYPE_ITEMS: EventTypeItem[] = [
   { key: "showCaptures", labelKey: "captures" },
   { key: "showTerminalHacks", labelKey: "terminal_hacks" },
   { key: "showMissionEvents", labelKey: "mission_events" },
+  { key: "showZeusPings", labelKey: "zeus_pings" },
 ];
 
 const SIDE_FILTER_OPTIONS: { key: SideFilter; labelKey: string }[] = [
@@ -57,6 +60,7 @@ function isNonDefault(state: EventFilterState): boolean {
     state.showCaptures !== DEFAULT_EVENT_FILTERS.showCaptures ||
     state.showTerminalHacks !== DEFAULT_EVENT_FILTERS.showTerminalHacks ||
     state.showMissionEvents !== DEFAULT_EVENT_FILTERS.showMissionEvents ||
+    state.showZeusPings !== DEFAULT_EVENT_FILTERS.showZeusPings ||
     state.sideFilter !== DEFAULT_EVENT_FILTERS.sideFilter
   );
 }

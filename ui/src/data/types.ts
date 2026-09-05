@@ -299,6 +299,16 @@ export interface ZeusCameraPayload {
   pitch?: number;
 }
 
+/** A player pinged Zeus. Reported by the Zeus client; position stamped server-side. */
+export interface ZeusPingPayload {
+  curatorId: number;
+  unitId: number;
+  name: string;
+  side: string;
+  x: number;
+  y: number;
+}
+
 export interface ZeusEntityEventDef {
   type: "zeusEntity";
   payload: ZeusEntityPayload;
@@ -312,6 +322,11 @@ export interface ZeusRemoteControlEventDef {
 export interface ZeusCameraEventDef {
   type: "zeusCamera";
   payload: ZeusCameraPayload;
+}
+
+export interface ZeusPingEventDef {
+  type: "zeusPing";
+  payload: ZeusPingPayload;
 }
 
 export type EventDef = { frameNum: number } & (
@@ -329,6 +344,7 @@ export type EventDef = { frameNum: number } & (
   | ZeusEntityEventDef
   | ZeusRemoteControlEventDef
   | ZeusCameraEventDef
+  | ZeusPingEventDef
 );
 
 // --------------- Markers ---------------

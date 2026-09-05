@@ -8,6 +8,7 @@ import { ServerFpsEvent } from "./events/serverFpsEvent";
 import {
   ZeusCameraEvent,
   ZeusEntityEvent,
+  ZeusPingEvent,
   ZeusRemoteControlEvent,
 } from "./events/zeusEvents";
 import { applySnapshotDiff, isSnapshotDiff } from "../data/snapshotDiff";
@@ -27,6 +28,7 @@ export class EventManager {
   private zeusEntities = new Map<number, ZeusEntityInfo>();
   private zeusRemoteControl: ZeusRemoteControlEvent[] = [];
   private zeusCameras = new Map<number, ZeusCameraEvent[]>();
+  private zeusPings: ZeusPingEvent[] = [];
 
   /** Add an event and index it by frame number. */
   addEvent(event: GameEvent): void {
@@ -68,6 +70,12 @@ export class EventManager {
       series.sort((a, b) => a.frameNum - b.frameNum);
       this.zeusCameras.set(event.payload.curatorId, series);
       return;
+    }
+    if (event instanceof ZeusPingEvent) {
+      // Deliberately no early return: a ping is indexed for the map overlay and
+      // still belongs in this.events so it shows in the event log.
+      this.zeusPings.push(event);
+      this.zeusPings.sort((a, b) => a.frameNum - b.frameNum);
     }
     this.events.push(event);
 
@@ -171,6 +179,21 @@ export class EventManager {
       : (sorted[middle - 1] + sorted[middle]) / 2;
 
     return { current: samples[samples.length - 1].fps, average, median };
+  }
+
+  /**
+   * Pings whose map lifetime covers `frame`, oldest first.
+   * A ping is drawn from its own frame until `frameNum + lifetimeFrames`.
+   */
+  getActivePings(frame: number, lifetimeFrames: number): ZeusPingEvent[] {
+    return this.zeusPings.filter(
+      (ping) => ping.frameNum <= frame && frame < ping.frameNum + lifetimeFrames,
+    );
+  }
+
+  /** Every ping in the recording, oldest first. */
+  getZeusPings(): ZeusPingEvent[] {
+    return this.zeusPings;
   }
 
   /** Zeus identities discovered in this recording, in curatorId order. */
@@ -414,5 +437,6 @@ export class EventManager {
     this.zeusEntities = new Map();
     this.zeusRemoteControl = [];
     this.zeusCameras = new Map();
+    this.zeusPings = [];
   }
 }

@@ -146,3 +146,37 @@ func TestParseServerFpsEventPreservesPayload(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(event.Message), &payload))
 	require.Equal(t, 47.25, payload["fps"])
 }
+
+func TestParseZeusPingEventPreservesPayload(t *testing.T) {
+	event := parseEventArray([]interface{}{
+		float64(120),
+		"zeusPing",
+		map[string]interface{}{
+			"curatorId": float64(42),
+			"unitId":    float64(17),
+			"name":      "Danny",
+			"side":      "WEST",
+			"x":         float64(3411),
+			"y":         float64(9002),
+		},
+	})
+
+	require.NotNil(t, event)
+	require.Equal(t, "zeusPing", event.Type)
+	require.Equal(t, uint32(120), event.FrameNum)
+
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(event.Message), &payload))
+	require.Equal(t, float64(42), payload["curatorId"])
+	require.Equal(t, float64(17), payload["unitId"])
+	require.Equal(t, "Danny", payload["name"])
+	require.Equal(t, "WEST", payload["side"])
+	require.Equal(t, float64(3411), payload["x"])
+	require.Equal(t, float64(9002), payload["y"])
+}
+
+// A ping is low-volume and must be readable without selecting a unit, so unlike
+// the four per-player snapshot types it stays in the manifest.
+func TestZeusPingIsNotAPlayerSnapshotEvent(t *testing.T) {
+	require.False(t, IsPlayerSnapshotEvent("zeusPing"))
+}

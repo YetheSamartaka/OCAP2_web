@@ -52,6 +52,8 @@ describe("JsonDecoder.decodeManifest", () => {
         [4, "zeusCamera", { curatorId: 90, x: 1, y: 2, dir: 90, fov: 0.75 }],
         [8, "zeusRemoteControl", { curatorId: 90, unitId: 7, active: true }],
         [9, "zeusCamera", { x: 1, y: 2 }],
+        [12, "zeusPing", { curatorId: 90, unitId: 7, name: "Danny", side: "WEST", x: 3411, y: 9002 }],
+        [13, "zeusPing", { unitId: 7, x: 1, y: 2 }],
       ],
     }));
 
@@ -59,6 +61,7 @@ describe("JsonDecoder.decodeManifest", () => {
       { frameNum: 2, type: "zeusEntity", payload: { curatorId: 90, name: "Danny", playerUid: "7656", bodyUnitId: -1 } },
       { frameNum: 4, type: "zeusCamera", payload: { curatorId: 90, x: 1, y: 2, dir: 90, fov: 0.75 } },
       { frameNum: 8, type: "zeusRemoteControl", payload: { curatorId: 90, unitId: 7, active: true } },
+      { frameNum: 12, type: "zeusPing", payload: { curatorId: 90, unitId: 7, name: "Danny", side: "WEST", x: 3411, y: 9002 } },
     ]);
   });
 

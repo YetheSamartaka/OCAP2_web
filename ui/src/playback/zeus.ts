@@ -1,4 +1,4 @@
-import type { Side } from "../data/types";
+import type { Side, ZeusPingPayload } from "../data/types";
 
 /**
  * Frames after a remote-control stop during which that unit's kills still
@@ -6,6 +6,122 @@ import type { Side } from "../data/types";
  * `lastDamageSource` after occupancy has already cleared.
  */
 export const ZEUS_RC_KILL_GRACE_FRAMES = 30;
+
+/**
+ * How long a Zeus ping stays drawn on the map, in seconds of playback time.
+ * After this it disappears from the map but remains in the event log forever.
+ */
+export const ZEUS_PING_MAP_SECONDS = 180;
+
+/**
+ * The ping map lifetime in frames. Derived, never hardcoded: captureDelayMs
+ * comes from the manifest and is not always 1000.
+ */
+export function zeusPingLifetimeFrames(captureDelayMs: number): number {
+  if (!Number.isFinite(captureDelayMs) || captureDelayMs <= 0) {
+    return ZEUS_PING_MAP_SECONDS;
+  }
+  return Math.max(1, Math.round((ZEUS_PING_MAP_SECONDS * 1000) / captureDelayMs));
+}
+
+/**
+ * Metres within which two pings from the same player collapse into one map
+ * icon carrying both timestamps. A player who pings twice without moving would
+ * otherwise draw two icons and two labels on top of each other.
+ */
+export const ZEUS_PING_GROUP_RADIUS_M = 25;
+
+/** Frames over which a ping fades out at the end of its map lifetime. */
+export const ZEUS_PING_FADE_FRAMES = 30;
+
+/** The minimal shape `groupZeusPings` needs; satisfied by ZeusPingEvent. */
+export interface ZeusPingLike {
+  frameNum: number;
+  payload: ZeusPingPayload;
+}
+
+export interface ZeusPingGroup {
+  /** Stable identity across frames, so the overlay can reuse marker handles. */
+  key: string;
+  unitId: number;
+  name: string;
+  side: string;
+  position: [number, number];
+  /** Frames of every ping in the group, newest first. */
+  frames: number[];
+  /** Newest ping in the group; drives the fade. */
+  latestFrame: number;
+}
+
+/**
+ * Collapse co-located pings from the same player into one group.
+ *
+ * Greedy clustering against the group's anchor, not a quantised grid: two
+ * pings 9 m apart must always group, and a grid would split them whenever they
+ * straddle a cell boundary. Groups come back oldest-first by their newest ping.
+ *
+ * The key is anchored on the group's oldest ping so it stays stable frame to
+ * frame while the group's newest ping and position keep changing.
+ */
+export function groupZeusPings(pings: ZeusPingLike[]): ZeusPingGroup[] {
+  const groups: ZeusPingGroup[] = [];
+  const anchors: Array<[number, number]> = [];
+
+  for (const ping of pings) {
+    const { unitId, x, y, name, side } = ping.payload;
+
+    let matched = false;
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      if (group.unitId !== unitId) continue;
+      const [ax, ay] = anchors[i];
+      if (Math.hypot(x - ax, y - ay) > ZEUS_PING_GROUP_RADIUS_M) continue;
+
+      group.frames.push(ping.frameNum);
+      if (ping.frameNum > group.latestFrame) {
+        group.latestFrame = ping.frameNum;
+        group.position = [x, y];
+      }
+      matched = true;
+      break;
+    }
+    if (matched) continue;
+
+    groups.push({
+      key: `${unitId}:${ping.frameNum}`,
+      unitId,
+      name,
+      side,
+      position: [x, y],
+      frames: [ping.frameNum],
+      latestFrame: ping.frameNum,
+    });
+    anchors.push([x, y]);
+  }
+
+  for (const group of groups) {
+    group.frames.sort((a, b) => b - a);
+  }
+
+  return groups.sort((a, b) => a.latestFrame - b.latestFrame);
+}
+
+/**
+ * Opacity for a ping group at `frame`. Solid for most of its life, then a
+ * short ramp so it does not vanish abruptly at the 180 s mark.
+ */
+export function zeusPingAlpha(
+  frame: number,
+  latestFrame: number,
+  lifetimeFrames: number,
+): number {
+  const age = frame - latestFrame;
+  if (age < 0 || age >= lifetimeFrames) return 0;
+  const fade = Math.min(ZEUS_PING_FADE_FRAMES, lifetimeFrames);
+  const remaining = lifetimeFrames - age;
+  if (remaining >= fade) return 1;
+  return Math.max(0.15, remaining / fade);
+}
 
 /** Convert Arma getObjectFOV (tan of half-angle) to horizontal degrees. */
 export function armaFovToDegrees(fov: number): number {

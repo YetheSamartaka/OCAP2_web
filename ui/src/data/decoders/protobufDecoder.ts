@@ -200,7 +200,8 @@ function convertEvent(pb: PbEvent): EventDef | null {
     }
     case "zeusEntity":
     case "zeusRemoteControl":
-    case "zeusCamera": {
+    case "zeusCamera":
+    case "zeusPing": {
       try {
         const payload = JSON.parse(pb.message);
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;

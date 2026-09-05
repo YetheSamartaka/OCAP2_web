@@ -112,7 +112,7 @@ export function RecordingPlayback(): JSX.Element {
     }
   };
 
-  useRenderBridge(engine, renderer, markerManager);
+  useRenderBridge(engine, renderer, markerManager, timeMode);
 
   // ─── Focus editing callbacks (defined before onMount so shortcuts can reference them) ───
 

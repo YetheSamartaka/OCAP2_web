@@ -341,7 +341,8 @@ function convertEvent(raw: RawJsonEvent): EventDef | null {
     }
     case "zeusEntity":
     case "zeusRemoteControl":
-    case "zeusCamera": {
+    case "zeusCamera":
+    case "zeusPing": {
       const payload = raw[2];
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
       if (typeof (payload as { curatorId?: unknown }).curatorId !== "number") return null;

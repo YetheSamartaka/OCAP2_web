@@ -174,7 +174,8 @@ func parseEventArray(evtArr []interface{}) *Event {
 		event.Type == "staminaSnapshot" || event.Type == "radioSnapshot" ||
 		event.Type == "tfarSettings" || event.Type == "acreSettings" ||
 		event.Type == "serverFps" || event.Type == "zeusEntity" ||
-		event.Type == "zeusRemoteControl" || event.Type == "zeusCamera" {
+		event.Type == "zeusRemoteControl" || event.Type == "zeusCamera" ||
+		event.Type == "zeusPing" {
 		if len(evtArr) > 2 {
 			if encoded, err := json.Marshal(evtArr[2]); err == nil {
 				event.Message = string(encoded)
