@@ -199,6 +199,19 @@ export function UnitsTab(props: UnitsTabProps): JSX.Element {
                     {(unit) => {
                       const status = () => getUnitStatus(unit.id);
                       const selected = () => selectedUnit() === unit.id;
+                      const snap = () => engine.entitySnapshots().get(unit.id);
+                      const displayName = () => {
+                        if (unit.type === "zeus") {
+                          return snap()?.name || unit.name || `Unit ${unit.id}`;
+                        }
+                        return unit.name || `Unit ${unit.id}`;
+                      };
+                      const displayRole = () => {
+                        if (unit.type === "zeus" && snap()?.controllingUnitId != null) {
+                          return "";
+                        }
+                        return unit.role;
+                      };
                       return (
                         <>
                           <button
@@ -210,7 +223,7 @@ export function UnitsTab(props: UnitsTabProps): JSX.Element {
                             }}
                             title={t("profile_open")}
                             aria-label={t("profile_open_named", {
-                              name: unit.name || t("profile_title_unit", { id: unit.id }),
+                              name: displayName(),
                             })}
                             onClick={() =>
                               setSelectedUnit(selected() ? null : unit.id)
@@ -233,13 +246,13 @@ export function UnitsTab(props: UnitsTabProps): JSX.Element {
                                   [styles.unitNameInactive]: status() === "inactive",
                                 }}
                               >
-                                {unit.name || `Unit ${unit.id}`}
-                                <Show when={!unit.isPlayer}>
+                                {displayName()}
+                                <Show when={!unit.isPlayer && unit.type !== "zeus"}>
                                   <span class={styles.unitAiBadge}>{t("ai_label")}</span>
                                 </Show>
                               </span>
-                              <Show when={unit.role}>
-                                <span class={styles.unitRole}>{unit.role}</span>
+                              <Show when={displayRole()}>
+                                <span class={styles.unitRole}>{displayRole()}</span>
                               </Show>
                             </span>
                             <Show when={showKillCount() && (killDeathCounts().kills.get(unit.id) ?? 0) > 0}>

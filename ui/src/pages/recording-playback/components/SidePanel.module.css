@@ -90,8 +90,9 @@
 
 .sideTabs {
   display: flex;
-  gap: 4px;
-  padding: 8px 10px;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   flex-shrink: 0;
 }
@@ -99,16 +100,19 @@
 .sideTab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 5px;
+  flex: 0 0 auto;
+  white-space: nowrap;
   border: none;
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.03em;
   transition: all 0.2s;
 }
 

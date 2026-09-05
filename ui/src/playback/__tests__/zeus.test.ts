@@ -9,7 +9,7 @@ import {
   ZeusRemoteControlEvent,
 } from "../events/zeusEvents";
 import { Unit } from "../entities/unit";
-import { armaFovToDegrees } from "../zeus";
+import { armaFovToDegrees, formatUnitTypeLabel, formatZeusOccupancyName } from "../zeus";
 import { MockRenderer } from "../../renderers/mockRenderer";
 import type { EntityDef, Manifest } from "../../data/types";
 
@@ -43,6 +43,36 @@ function makeManifest(overrides: Partial<Manifest> = {}): Manifest {
     ...overrides,
   };
 }
+
+describe("formatUnitTypeLabel", () => {
+  it("maps recorded getUnitType codes to infantry labels", () => {
+    expect(formatUnitTypeLabel("Man")).toBe("Rifleman");
+    expect(formatUnitTypeLabel("MG")).toBe("Autorifleman");
+    expect(formatUnitTypeLabel("Sniper")).toBe("Marksman");
+    expect(formatUnitTypeLabel("ExplosiveSpecialist")).toBe("Explosive Specialist");
+  });
+
+  it("strips mission slot suffixes and passes unknown roles through", () => {
+    expect(formatUnitTypeLabel("SL@Vova")).toBe("SL");
+    expect(formatUnitTypeLabel("Spotter")).toBe("Spotter");
+    expect(formatUnitTypeLabel("")).toBe("");
+    expect(formatUnitTypeLabel(undefined)).toBe("");
+  });
+});
+
+describe("formatZeusOccupancyName", () => {
+  it("appends unit type when the recording has one", () => {
+    expect(formatZeusOccupancyName("Danny", "Bakunin", "Man")).toBe(
+      "Danny controlling Bakunin (Rifleman)",
+    );
+  });
+
+  it("omits parentheses when no unit type was recorded", () => {
+    expect(formatZeusOccupancyName("Danny", "Bakunin", "")).toBe(
+      "Danny controlling Bakunin",
+    );
+  });
+});
 
 describe("armaFovToDegrees", () => {
   it("converts the default Arma FOV of 0.75 to about 74 degrees", () => {
@@ -251,11 +281,12 @@ describe("PlaybackEngine Zeus synthesis", () => {
       entities: [
         unitDef({
           id: 7,
-          name: "Rifleman",
+          name: "Bakunin",
           side: "EAST",
+          role: "Man",
           positions: [
-            { position: [0, 0], direction: 0, alive: 1 },
-            { position: [10, 20], direction: 45, alive: 1 },
+            { position: [0, 0], direction: 0, alive: 1, role: "Man" },
+            { position: [10, 20], direction: 45, alive: 1, role: "MG" },
           ],
         }),
       ],
@@ -295,7 +326,7 @@ describe("PlaybackEngine Zeus synthesis", () => {
     expect(possessing?.position).toEqual([10, 20]);
     expect(possessing?.side).toBe("EAST");
     expect(possessing?.controllingUnitId).toBe(7);
-    expect(possessing?.name).toContain("controlling");
+    expect(possessing?.name).toBe("Danny controlling Bakunin (Autorifleman)");
     expect(possessing?.fov).toBeUndefined();
   });
 

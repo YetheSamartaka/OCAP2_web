@@ -137,9 +137,10 @@ function convertUnitPosition(frame: unknown[]): EntityState {
   const isInVehicle = vehicleField !== 0;
   const name = typeof frame[4] === "string" ? frame[4] : undefined;
   const isPlayer = frame[5] === 1 || frame[5] === true;
-  // field[6] is currentRole (unused), field[7] is groupID, field[8] is side
+  // field[6] is currentRole, field[7] is groupID, field[8] is side
   const groupName = typeof frame[7] === "string" ? frame[7] : undefined;
   const rawSide = typeof frame[8] === "string" ? frame[8] : undefined;
+  const role = typeof frame[6] === "string" ? frame[6] : undefined;
   const state: EntityState = {
     position: toArmaCoord(pos),
     direction: dir,
@@ -149,6 +150,7 @@ function convertUnitPosition(frame: unknown[]): EntityState {
     name: name || undefined,
     isPlayer,
   };
+  if (role) state.role = role;
   if (groupName) state.groupName = groupName;
   if (rawSide) state.side = mapSide(rawSide);
   return state;

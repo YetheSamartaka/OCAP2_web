@@ -20,6 +20,7 @@ import { useRenderer } from "../../../hooks/useRenderer";
 import { Unit } from "../../../playback/entities/unit";
 import { PlayerSnapshotEvent } from "../../../playback/events/playerSnapshotEvent";
 import { formatTime } from "../../../playback/time";
+import { formatUnitTypeLabel } from "../../../playback/zeus";
 import type { BriefingMarkerHandle } from "../../../renderers/renderer.types";
 import { SIDE_COLORS_BRIGHT, SIDE_COLORS_UI } from "../../../config/sideColors";
 import { BODY_PART_IDS, type BodyPartId } from "../medical/bodyImage";
@@ -348,11 +349,15 @@ export function PlayerProfileCard(props: Props): JSX.Element {
         ?.controllingUnitId ?? props.unit.id
     );
   });
-  const controllingHostName = createMemo(() => {
+  const controllingHost = createMemo(() => {
     const unitId = engine.entitySnapshots().get(props.unit.id)?.controllingUnitId;
-    if (unitId == null) return "";
+    if (unitId == null) return null;
     const host = engine.entityManager.getEntity(unitId);
-    return host instanceof Unit ? host.name || String(unitId) : "";
+    if (!(host instanceof Unit)) return null;
+    return {
+      name: host.name || String(unitId),
+      type: formatUnitTypeLabel(host.roleAtFrame(engine.currentFrame())),
+    };
   });
 
   createEffect(() => {
@@ -685,8 +690,12 @@ export function PlayerProfileCard(props: Props): JSX.Element {
           <div class={styles.eyebrow}>
             {props.unit.groupName || t("ungrouped")} ·{" "}
             {props.unit.role || (props.unit.isPlayer ? t("profile_role_player") : t("ai_label"))}
-            <Show when={controllingHostName()}>
-              {(name) => ` · ${t("zeus_controlling", { name: name() })}`}
+            <Show when={controllingHost()}>
+              {(host) =>
+                host().type
+                  ? ` · ${t("zeus_controlling_typed", { name: host().name, type: host().type })}`
+                  : ` · ${t("zeus_controlling", { name: host().name })}`
+              }
             </Show>
           </div>
           <h2>

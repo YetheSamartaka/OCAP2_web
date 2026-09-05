@@ -41,3 +41,41 @@ export interface ZeusFrameState {
 export function isZeusSide(side: Side | string | null | undefined): boolean {
   return side === "VIRTUAL";
 }
+
+/** Recorded getUnitType / roleDescription → label shown next to a possessed unit. */
+const UNIT_TYPE_LABELS: Record<string, string> = {
+  Man: "Rifleman",
+  MG: "Autorifleman",
+  GL: "Grenadier",
+  AT: "AT",
+  AA: "AA",
+  Sniper: "Marksman",
+  Medic: "Medic",
+  Engineer: "Engineer",
+  ExplosiveSpecialist: "Explosive Specialist",
+  Leader: "Leader",
+  Officer: "Officer",
+};
+
+/**
+ * Readable unit type for occupancy labels.
+ * Empty when the recording has no role / getUnitType for that unit.
+ */
+export function formatUnitTypeLabel(role: string | null | undefined): string {
+  const raw = (role ?? "").trim();
+  if (!raw) return "";
+  const slot = raw.split("@")[0]?.trim() ?? "";
+  if (!slot) return "";
+  return UNIT_TYPE_LABELS[slot] ?? slot;
+}
+
+/** Map / list label while Zeus is remote-controlling a unit. */
+export function formatZeusOccupancyName(
+  zeusName: string,
+  hostName: string,
+  hostType?: string | null,
+): string {
+  const type = formatUnitTypeLabel(hostType);
+  if (type) return `${zeusName} controlling ${hostName} (${type})`;
+  return `${zeusName} controlling ${hostName}`;
+}

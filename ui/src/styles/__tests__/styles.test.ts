@@ -157,6 +157,11 @@ describe("CSS style files", () => {
         expect(content.length).toBeGreaterThan(0);
       });
     }
+
+    it("SidePanel side tabs wrap so VIRTUAL stays visible with 3+ factions", () => {
+      const css = readFileSync(resolve(componentsDir, "SidePanel.module.css"), "utf-8");
+      expect(css).toMatch(/\.sideTabs\s*\{[^}]*flex-wrap:\s*wrap/);
+    });
   });
 
   describe("entities.css", () => {

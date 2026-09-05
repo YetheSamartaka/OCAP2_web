@@ -57,6 +57,8 @@ export interface EntityState {
   groupName?: string;
   /** Per-frame side (may change mid-mission). */
   side?: Side;
+  /** Per-frame unit type from getUnitType (Man, MG, AT, Medic, …). */
+  role?: string;
 }
 
 // --------------- Event discriminated union ---------------

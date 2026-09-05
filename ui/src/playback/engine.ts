@@ -30,6 +30,7 @@ import {
 } from "./events/zeusEvents";
 import { Unit } from "./entities/unit";
 import { Vehicle } from "./entities/vehicle";
+import { formatZeusOccupancyName } from "./zeus";
 
 // ─── Event factory ───
 
@@ -674,7 +675,8 @@ export class PlaybackEngine {
           direction = zeus.camera.dir;
         }
         const hostName = host?.name ?? (hostEntity instanceof Unit ? hostEntity.name : null);
-        name = hostName ? `${entity.name} controlling ${hostName}` : entity.name;
+        const hostType = hostEntity instanceof Unit ? hostEntity.roleAtFrame(frame) : "";
+        name = hostName ? formatZeusOccupancyName(entity.name, hostName, hostType) : entity.name;
         controllingUnitId = zeus.controllingUnitId;
       } else if (zeus.camera) {
         position = [zeus.camera.x, zeus.camera.y];

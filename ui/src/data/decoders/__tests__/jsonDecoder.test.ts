@@ -1009,6 +1009,7 @@ describe("JsonDecoder.decodeManifest", () => {
 
     expect(positions[0].groupName).toBe("Alpha 1");
     expect(positions[0].side).toBe("WEST");
+    expect(positions[0].role).toBe("rifleman");
 
     expect(positions[1].groupName).toBe("Bravo 1");
     expect(positions[1].side).toBe("EAST");

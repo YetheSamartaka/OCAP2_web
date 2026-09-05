@@ -280,6 +280,29 @@ describe("Unit", () => {
     });
   });
 
+  describe("roleAtFrame", () => {
+    it("returns the CREATE role when positions are missing", () => {
+      const u = new Unit(1, "Test", "man", 0, 10, "WEST", true, "G1", "Medic");
+      expect(u.roleAtFrame(0)).toBe("Medic");
+    });
+
+    it("prefers the per-frame getUnitType over CREATE roleDescription", () => {
+      const positions: EntityState[] = [
+        { ...makeState(100, 200, 90, 1), role: "MG" },
+        { ...makeState(110, 210, 95, 1), role: "AT" },
+      ];
+      const u = new Unit(1, "Test", "man", 0, 10, "WEST", true, "G1", "Spotter", positions);
+      expect(u.roleAtFrame(0)).toBe("MG");
+      expect(u.roleAtFrame(1)).toBe("AT");
+    });
+
+    it("falls back to CREATE role when the frame has no per-frame role", () => {
+      const positions: EntityState[] = [makeState(100, 200, 90, 1)];
+      const u = new Unit(1, "Test", "man", 0, 10, "WEST", true, "G1", "Leader", positions);
+      expect(u.roleAtFrame(0)).toBe("Leader");
+    });
+  });
+
   describe("getStateAtFrame", () => {
     it("returns snapshot with correct side from the unit", () => {
       const positions: EntityState[] = [

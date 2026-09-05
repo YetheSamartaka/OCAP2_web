@@ -82,6 +82,20 @@ export class Unit extends Entity {
     return this.side;
   }
 
+  /**
+   * Unit type at an absolute playback frame.
+   * Prefers the per-frame getUnitType (Man, MG, AT, …) and falls back to
+   * the CREATE roleDescription so recordings without that field keep working.
+   */
+  roleAtFrame(absoluteFrame: number): string {
+    const relative = this.getRelativeFrameIndex(absoluteFrame);
+    if (!this.isFrameOutOfBounds(relative)) {
+      const state = this.positions![relative];
+      if (state?.role) return state.role;
+    }
+    return this.role;
+  }
+
   /** CSS class for the unit's side: WEST->'blufor', EAST->'opfor', etc. */
   get sideClass(): string {
     return SIDE_CLASS[this.side] ?? "unknown";
