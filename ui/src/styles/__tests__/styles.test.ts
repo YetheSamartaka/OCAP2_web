@@ -164,6 +164,16 @@ describe("CSS style files", () => {
     });
   });
 
+  describe("RecordingSelector.module.css", () => {
+    const selectorDir = resolve(__dirname, "..", "..", "pages", "recording-selector");
+    const css = readFileSync(resolve(selectorDir, "RecordingSelector.module.css"), "utf-8");
+
+    it("lets the detail sidebar scroll so VIRTUAL is not clipped", () => {
+      expect(css).toMatch(/\.sidebarContent\s*\{[^}]*min-height:\s*0/);
+      expect(css).toMatch(/\.sidebarContent\s*\{[^}]*overflow-y:\s*auto/);
+    });
+  });
+
   describe("entities.css", () => {
     const css = readFileSync(resolve(stylesDir, "entities.css"), "utf-8");
 

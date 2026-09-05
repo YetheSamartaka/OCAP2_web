@@ -793,6 +793,65 @@ func TestComputeStats_IgnoresNonPlayerSides(t *testing.T) {
 	assert.False(t, hasUnknown)
 }
 
+func TestComputeStats_CountsVirtualZeus(t *testing.T) {
+	manifest := &storage.Manifest{
+		Entities: []storage.EntityDef{
+			{ID: 10, Type: "unit", Name: "Rifleman", Side: "EAST", IsPlayer: true},
+		},
+		Events: []storage.Event{
+			{Type: "zeusEntity", Message: `{"curatorId":53,"name":"Bořek","playerUid":"7656","bodyUnitId":-1}`},
+			{Type: "zeusEntity", Message: `{"curatorId":90,"name":"dominik2253","playerUid":"7657","bodyUnitId":-1}`},
+			// Duplicate curator must not inflate the VIRTUAL card.
+			{Type: "zeusEntity", Message: `{"curatorId":53,"name":"Bořek","playerUid":"7656","bodyUnitId":-1}`},
+			{Type: "killed", SourceID: 10, TargetID: 99},
+		},
+	}
+
+	playerCount, killCount, _, sides := computeStats(manifest)
+
+	assert.Equal(t, 3, playerCount, "EAST player plus two unique Zeus operators")
+	assert.Equal(t, 1, killCount)
+	assert.Equal(t, 1, sides["EAST"].Players)
+	assert.Equal(t, 1, sides["EAST"].Units)
+	assert.Equal(t, 2, sides["VIRTUAL"].Units)
+	assert.Equal(t, 2, sides["VIRTUAL"].Players)
+	assert.Equal(t, 0, sides["VIRTUAL"].Dead)
+	assert.Equal(t, 0, sides["VIRTUAL"].Kills)
+}
+
+func TestComputeStats_ZeusNameAlreadyCounted(t *testing.T) {
+	manifest := &storage.Manifest{
+		Entities: []storage.EntityDef{
+			{ID: 10, Type: "unit", Name: "Danny", Side: "WEST", IsPlayer: true},
+		},
+		Events: []storage.Event{
+			{Type: "zeusEntity", Message: `{"curatorId":0,"name":"Danny","bodyUnitId":-1}`},
+		},
+	}
+
+	playerCount, _, _, sides := computeStats(manifest)
+
+	assert.Equal(t, 1, playerCount, "same name must not inflate the global player count")
+	assert.Equal(t, 1, sides["WEST"].Players)
+	assert.Equal(t, 1, sides["VIRTUAL"].Players)
+	assert.Equal(t, 1, sides["VIRTUAL"].Units)
+}
+
+func TestComputeStats_IgnoresMalformedZeus(t *testing.T) {
+	manifest := &storage.Manifest{
+		Events: []storage.Event{
+			{Type: "zeusEntity", Message: `not json`},
+			{Type: "zeusEntity", Message: ""},
+		},
+	}
+
+	playerCount, _, _, sides := computeStats(manifest)
+
+	assert.Equal(t, 0, playerCount)
+	_, hasVirtual := sides["VIRTUAL"]
+	assert.False(t, hasVirtual)
+}
+
 func TestWorker_CleanupInterrupted(t *testing.T) {
 	dir := t.TempDir()
 
@@ -979,7 +1038,7 @@ func TestBackfillStats(t *testing.T) {
 	assert.Equal(t, "1", stats[1], "killCount should be 1")
 }
 
-func TestBackfillStats_SkipsZeroStats(t *testing.T) {
+func TestBackfillStats_WritesZeroStats(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create a gzipped JSON file with no players and no events
@@ -1017,9 +1076,12 @@ func TestBackfillStats_SkipsZeroStats(t *testing.T) {
 	ctx := context.Background()
 	worker.backfillStats(ctx)
 
-	// Stats should NOT be set (skipped because playerCount=0 and killCount=0)
-	_, ok := base.stats[20]
-	assert.False(t, ok, "stats should not be set for zero-stats operation")
+	// Empty recordings still get a stats write so stats_revision advances
+	// and the worker does not re-parse them on every startup.
+	stats, ok := base.stats[20]
+	assert.True(t, ok, "stats should be written even when counts are zero")
+	assert.Equal(t, "0", stats[0], "playerCount should be 0")
+	assert.Equal(t, "0", stats[1], "killCount should be 0")
 }
 
 func TestBackfillStats_MissingFile(t *testing.T) {

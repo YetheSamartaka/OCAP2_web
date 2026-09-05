@@ -229,6 +229,19 @@ describe("DetailSidebar force composition", () => {
     expect(westIdx).toBeLessThan(civIdx);
     expect(civIdx).toBeLessThan(virtualIdx);
   });
+
+  it("hides sides with zero units so empty VIRTUAL is omitted", () => {
+    const rec: Recording = {
+      ...baseRec,
+      sideComposition: {
+        EAST: { units: 3, dead: 0, kills: 0, players: 2 },
+        VIRTUAL: { units: 0, dead: 0, kills: 0, players: 0 },
+      },
+    };
+    const { container } = renderSidebarWithAdmin(rec);
+    expect(container.textContent).toContain("EAST");
+    expect(container.textContent).not.toContain("VIRTUAL");
+  });
 });
 
 describe("DetailSidebar combat summary", () => {

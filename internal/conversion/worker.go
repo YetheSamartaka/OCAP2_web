@@ -3,6 +3,7 @@ package conversion
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -268,7 +269,35 @@ func computeStats(manifest *storage.Manifest) (playerCount, killCount, playerKil
 		}
 	}
 
+	// Zeus operators are not unit entities — they arrive as zeusEntity events
+	// and play back on the VIRTUAL side. Count unique curatorIds so the
+	// recording-selector dashboard can show that faction.
+	seenZeus := make(map[uint32]struct{})
 	for _, evt := range manifest.Events {
+		if evt.Type == "zeusEntity" {
+			var payload struct {
+				CuratorID uint32 `json:"curatorId"`
+				Name      string `json:"name"`
+			}
+			if err := json.Unmarshal([]byte(evt.Message), &payload); err != nil {
+				continue
+			}
+			if _, dup := seenZeus[payload.CuratorID]; dup {
+				continue
+			}
+			seenZeus[payload.CuratorID] = struct{}{}
+			sc := sides["VIRTUAL"]
+			sc.Units++
+			sc.Players++
+			sides["VIRTUAL"] = sc
+			if payload.Name == "" || !seenPlayerName[payload.Name] {
+				if payload.Name != "" {
+					seenPlayerName[payload.Name] = true
+				}
+				playerCount++
+			}
+			continue
+		}
 		if evt.Type == "killed" {
 			killCount++
 			if entityIsPlayer[evt.SourceID] {
@@ -316,9 +345,6 @@ func (w *Worker) backfillStats(ctx context.Context) {
 			}
 		}
 		playerCount, killCount, playerKillCount, sides := computeStats(manifest)
-		if playerCount == 0 && killCount == 0 {
-			continue
-		}
 		if err := w.repo.UpdateOperationStats(ctx, op.ID, playerCount, killCount, playerKillCount, sides); err != nil {
 			slog.Warn("failed to backfill stats", "operation_id", op.ID, "error", err)
 			continue
