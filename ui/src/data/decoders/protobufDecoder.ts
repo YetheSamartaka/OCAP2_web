@@ -198,6 +198,37 @@ function convertEvent(pb: PbEvent): EventDef | null {
         return null;
       }
     }
+    case "explosion": {
+      try {
+        const payload = JSON.parse(pb.message);
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+        if (typeof payload.radius !== "number" || !Number.isFinite(payload.radius) || payload.radius <= 0) return null;
+        return { frameNum, type, payload } as EventDef;
+      } catch {
+        return null;
+      }
+    }
+    case "radioTransmission": {
+      try {
+        const payload = JSON.parse(pb.message);
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+        if (typeof payload.frequency !== "number" || !Number.isFinite(payload.frequency)) return null;
+        return { frameNum, type, payload } as EventDef;
+      } catch {
+        return null;
+      }
+    }
+    case "serviceEvent":
+    case "staticWeapon": {
+      try {
+        const payload = JSON.parse(pb.message);
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+        if (typeof payload.unitId !== "number") return null;
+        return { frameNum, type, payload } as EventDef;
+      } catch {
+        return null;
+      }
+    }
     case "zeusEntity":
     case "zeusRemoteControl":
     case "zeusCamera":

@@ -10,10 +10,17 @@ import { CapturedEvent } from "../../../playback/events/capturedEvent";
 import { TerminalHackEvent } from "../../../playback/events/terminalHackEvent";
 import { PlayerSnapshotEvent } from "../../../playback/events/playerSnapshotEvent";
 import { ZeusPingEvent } from "../../../playback/events/zeusEvents";
+import {
+  ExplosionEvent,
+  RadioTransmissionEvent,
+  ServiceEvent,
+  StaticWeaponEvent,
+} from "../../../playback/events/supportEvents";
+import { formatNet } from "../../../playback/comms";
 import type { GameEvent } from "../../../playback/events/gameEvent";
 import { SIDE_COLORS_UI } from "../../../config/sideColors";
 import { formatElapsedTime } from "../../../playback/time";
-import { SkullIcon, BulletIcon, LinkIcon, ClockIcon, DoorExitIcon, ActivityIcon, FlagIcon, AlertTriangleIcon, TerminalIcon, TargetIcon } from "../../../components/Icons";
+import { SkullIcon, BulletIcon, LinkIcon, ClockIcon, DoorExitIcon, ActivityIcon, FlagIcon, AlertTriangleIcon, TerminalIcon, TargetIcon, ExplosionIcon, WrenchIcon, StaticWeaponIcon, RadioIcon } from "../../../components/Icons";
 import { EventFilters, DEFAULT_EVENT_FILTERS } from "./EventFilters";
 import type { EventFilterState } from "./EventFilters";
 import styles from "./SidePanel.module.css";
@@ -52,6 +59,18 @@ function eventStyle(event: GameEvent): { icon: JSX.Element; color: string } {
   if (event instanceof ZeusPingEvent) {
     return { icon: <TargetIcon size={16} />, color: SIDE_COLORS_UI.VIRTUAL };
   }
+  if (event instanceof ExplosionEvent) {
+    return { icon: <ExplosionIcon size={16} />, color: "var(--accent-warning)" };
+  }
+  if (event instanceof ServiceEvent) {
+    return { icon: <WrenchIcon size={16} />, color: "var(--accent-success)" };
+  }
+  if (event instanceof StaticWeaponEvent) {
+    return { icon: <StaticWeaponIcon size={16} />, color: "var(--accent-primary)" };
+  }
+  if (event instanceof RadioTransmissionEvent) {
+    return { icon: <RadioIcon size={16} />, color: "var(--accent-purple)" };
+  }
   return { icon: <ActivityIcon size={16} />, color: "#888" };
 }
 
@@ -72,6 +91,12 @@ export function EventsTab(): JSX.Element {
     if (event instanceof CapturedEvent) return f.showCaptures;
     if (event instanceof TerminalHackEvent) return f.showTerminalHacks;
     if (event instanceof ZeusPingEvent) return f.showZeusPings;
+    if (event instanceof ExplosionEvent) return f.showExplosions;
+    if (event instanceof ServiceEvent) return f.showServicing;
+    if (event instanceof StaticWeaponEvent) return f.showConstructions;
+    // Only the key-down is listed: a Stop says nothing on its own, and pairing
+    // the two into a duration is the comms tab's job.
+    if (event instanceof RadioTransmissionEvent) return f.showTransmissions && event.isStart;
     if (event instanceof EndMissionEvent || event instanceof GeneralMissionEvent) {
       return f.showMissionEvents;
     }
@@ -118,6 +143,23 @@ export function EventsTab(): JSX.Element {
           if (!event.unitName.toLowerCase().includes(text)) return false;
         } else if (event instanceof ZeusPingEvent) {
           if (!event.payload.name.toLowerCase().includes(text)) return false;
+        } else if (event instanceof ExplosionEvent) {
+          if (!event.payload.name.toLowerCase().includes(text)) return false;
+        } else if (event instanceof ServiceEvent) {
+          const haystack = [event.payload.vehicleName, event.payload.unitName]
+            .join(" ").toLowerCase();
+          if (!haystack.includes(text)) return false;
+        } else if (event instanceof StaticWeaponEvent) {
+          const haystack = [event.payload.name, event.payload.unitName]
+            .join(" ").toLowerCase();
+          if (!haystack.includes(text)) return false;
+        } else if (event instanceof RadioTransmissionEvent) {
+          const haystack = [
+            event.payload.radio,
+            formatNet(event.payload.frequency, event.payload.code),
+            engine.entityManager.getEntity(event.unitId)?.name ?? "",
+          ].join(" ").toLowerCase();
+          if (!haystack.includes(text)) return false;
         }
       }
 
@@ -136,6 +178,16 @@ export function EventsTab(): JSX.Element {
       engine.panToPosition(event.position);
     } else if (event instanceof ZeusPingEvent) {
       engine.panToPosition(event.position);
+    } else if (event instanceof ExplosionEvent) {
+      engine.panToPosition(event.position);
+    } else if (event instanceof ServiceEvent) {
+      // The vehicle is the subject and it may well have driven off since.
+      if (event.payload.vehicleId >= 0) engine.panToEntity(event.payload.vehicleId);
+      else engine.panToPosition(event.position);
+    } else if (event instanceof StaticWeaponEvent) {
+      engine.panToPosition(event.position);
+    } else if (event instanceof RadioTransmissionEvent) {
+      engine.panToEntity(event.unitId);
     }
   };
 
@@ -286,6 +338,82 @@ export function EventsTab(): JSX.Element {
                             <ClockIcon size={14} />
                             {timeStr(event.frameNum)}
                           </span>
+                        </span>
+                      </>
+                    ) : event instanceof ExplosionEvent ? (
+                      <>
+                        <span class={styles.eventMessage}>
+                          {event.payload.name} {t("detonated")}
+                        </span>
+                        <span class={styles.eventMeta}>
+                          <span class={styles.eventTime}>
+                            <ClockIcon size={14} />
+                            {timeStr(event.frameNum)}
+                          </span>
+                          <span class={styles.eventDistance}>
+                            {Math.round(event.radius)}m
+                          </span>
+                        </span>
+                      </>
+                    ) : event instanceof ServiceEvent ? (
+                      <>
+                        <span class={styles.eventMessage}>
+                          <Show when={event.payload.unitName} fallback={<>{t(event.payload.kind)}</>}>
+                            <span style={{ color: sideColor(event.payload.side) }}>
+                              {event.payload.unitName}
+                            </span>
+                            {" "}{t(event.payload.kind)}
+                          </Show>
+                          {" "}{event.payload.vehicleName}
+                        </span>
+                        <span class={styles.eventMeta}>
+                          <span class={styles.eventTime}>
+                            <ClockIcon size={14} />
+                            {timeStr(event.frameNum)}
+                          </span>
+                          <Show when={event.payload.kind === "rearm"} fallback={
+                            <span class={styles.eventDistance}>
+                              {Math.round((event.progress ?? 0) * 100)}%
+                            </span>
+                          }>
+                            <span class={styles.eventWeapon}>
+                              {event.payload.count}x {event.payload.magazineName ?? event.payload.magazine}
+                            </span>
+                          </Show>
+                        </span>
+                      </>
+                    ) : event instanceof StaticWeaponEvent ? (
+                      <>
+                        <span class={styles.eventMessage}>
+                          <Show when={event.payload.unitName} fallback={<>{t(event.payload.action)}</>}>
+                            <span style={{ color: sideColor(event.payload.side) }}>
+                              {event.payload.unitName}
+                            </span>
+                            {" "}{t(event.payload.action)}
+                          </Show>
+                          {" "}{event.payload.name}
+                        </span>
+                        <span class={styles.eventMeta}>
+                          <span class={styles.eventTime}>
+                            <ClockIcon size={14} />
+                            {timeStr(event.frameNum)}
+                          </span>
+                        </span>
+                      </>
+                    ) : event instanceof RadioTransmissionEvent ? (
+                      <>
+                        <span class={styles.eventMessage}>
+                          <span style={{ color: sideColor(engine.entitySnapshots().get(event.unitId)?.side ?? undefined) }}>
+                            {engine.entityManager.getEntity(event.unitId)?.name ?? `Unit ${event.unitId}`}
+                          </span>
+                          {" "}{t("transmitted_on")} {formatNet(event.payload.frequency, event.payload.code)}
+                        </span>
+                        <span class={styles.eventMeta}>
+                          <span class={styles.eventTime}>
+                            <ClockIcon size={14} />
+                            {timeStr(event.frameNum)}
+                          </span>
+                          <span class={styles.eventWeapon}>{event.payload.radio}</span>
                         </span>
                       </>
                     ) : event instanceof TerminalHackEvent ? (

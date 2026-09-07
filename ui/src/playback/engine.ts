@@ -1,6 +1,7 @@
 import { createSignal, type Accessor } from "solid-js";
 
-import type { Manifest, EventDef, WorldConfig } from "../data/types";
+import type { EntityState, Manifest, EventDef, WorldConfig } from "../data/types";
+import type { ArmaCoord } from "../utils/coordinates";
 import {
   resolveAcrePropagation,
   resolveTfarPropagation,
@@ -29,6 +30,12 @@ import {
   ZeusPingEvent,
   ZeusRemoteControlEvent,
 } from "./events/zeusEvents";
+import {
+  ExplosionEvent,
+  RadioTransmissionEvent,
+  ServiceEvent,
+  StaticWeaponEvent,
+} from "./events/supportEvents";
 import { Unit } from "./entities/unit";
 import { Vehicle } from "./entities/vehicle";
 import { formatZeusOccupancyName } from "./zeus";
@@ -88,6 +95,14 @@ function createGameEvent(def: EventDef): GameEvent | null {
       return new ZeusCameraEvent(def.frameNum, id, def.payload);
     case "zeusPing":
       return new ZeusPingEvent(def.frameNum, id, def.payload);
+    case "explosion":
+      return new ExplosionEvent(def.frameNum, id, def.payload);
+    case "serviceEvent":
+      return new ServiceEvent(def.frameNum, id, def.payload);
+    case "staticWeapon":
+      return new StaticWeaponEvent(def.frameNum, id, def.payload);
+    case "radioTransmission":
+      return new RadioTransmissionEvent(def.frameNum, id, def.payload);
     default:
       return null;
   }
@@ -462,6 +477,70 @@ export class PlaybackEngine {
 
     this.playerSnapshotLoads.set(unitId, load);
     return load;
+  }
+
+  /**
+   * Load every player's snapshot sidecar.
+   *
+   * The profile card reads one player at a time, which is why sidecars are
+   * lazy. A comms rollup is the opposite shape: it needs every player's radios
+   * at once to know who shared a net, so it pays the whole fan-out up front,
+   * once. A recording that keeps its snapshots in the manifest resolves
+   * immediately without a single request.
+   */
+  ensureAllPlayerSnapshots(): Promise<void> {
+    const unitIds = this.manifest?.snapshotUnitIds ?? [];
+    if (unitIds.length === 0) return Promise.resolve();
+    return Promise.all(unitIds.map((unitId) => this.ensurePlayerSnapshots(unitId))).then(() => {});
+  }
+
+  /**
+   * Raw per-frame state of one entity, or null when that frame is not loaded.
+   *
+   * Resolves from the same two sources as the playback snapshot: the chunk
+   * covering the frame when the recording is chunked, and the entity's own dense
+   * position array when it is a JSON recording. Anything reading history rather
+   * than the playhead -- trails, distance totals, group membership over time --
+   * has to come through here, because `entity.positions` is null for a chunked
+   * recording, and because EntitySnapshot drops the per-frame group and role
+   * this returns.
+   */
+  getStateAt(entityId: number, frame: number): EntityState | null {
+    const entity = this.entityManager.getEntity(entityId);
+    if (!entity) return null;
+    if (frame < entity.startFrame || frame > entity.endFrame) return null;
+
+    const chunkSize = this.manifest?.chunkSize || 300;
+    const chunk = this.chunkManager?.getChunkForFrame(frame);
+    if (chunk) {
+      const states = chunk.entities.get(entityId);
+      const state = states?.[frame - Math.floor(frame / chunkSize) * chunkSize];
+      if (state) return state;
+    }
+
+    return entity.positions?.[entity.getRelativeFrameIndex(frame)] ?? null;
+  }
+
+  /** Position of one entity at an arbitrary frame, or null when not loaded. */
+  getPositionAt(entityId: number, frame: number): ArmaCoord | null {
+    return this.getStateAt(entityId, frame)?.position ?? null;
+  }
+
+  /**
+   * Every chunk of a chunked recording, loaded.
+   *
+   * Playback only ever needs the chunk under the playhead and its neighbour, so
+   * chunks are lazy. Whole-mission analysis is the opposite shape and has to pay
+   * for the lot once; a JSON recording already holds everything and resolves
+   * immediately.
+   */
+  ensureAllChunks(): Promise<void> {
+    const chunkManager = this.chunkManager;
+    const count = this.manifest?.chunkCount ?? 0;
+    if (!chunkManager || count <= 0) return Promise.resolve();
+    const loads: Promise<unknown>[] = [];
+    for (let i = 0; i < count; i++) loads.push(chunkManager.loadChunk(i));
+    return Promise.all(loads).then(() => {});
   }
 
   /** Whether a player has snapshots at all, before any sidecar is fetched. */

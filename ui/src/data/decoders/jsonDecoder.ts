@@ -339,6 +339,29 @@ function convertEvent(raw: RawJsonEvent): EventDef | null {
       if (typeof fps !== "number" || !Number.isFinite(fps) || fps < 0) return null;
       return { frameNum, type, fps };
     }
+    case "explosion": {
+      const payload = raw[2];
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+      const radius = (payload as { radius?: unknown }).radius;
+      if (typeof radius !== "number" || !Number.isFinite(radius) || radius <= 0) return null;
+      return { frameNum, type, payload } as EventDef;
+    }
+    case "radioTransmission": {
+      const payload = raw[2];
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+      const frequency = (payload as { frequency?: unknown }).frequency;
+      // A transmission with no frequency names no net, so it can neither be
+      // grouped nor resolved to receivers.
+      if (typeof frequency !== "number" || !Number.isFinite(frequency)) return null;
+      return { frameNum, type, payload } as EventDef;
+    }
+    case "serviceEvent":
+    case "staticWeapon": {
+      const payload = raw[2];
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+      if (typeof (payload as { unitId?: unknown }).unitId !== "number") return null;
+      return { frameNum, type, payload } as EventDef;
+    }
     case "zeusEntity":
     case "zeusRemoteControl":
     case "zeusCamera":

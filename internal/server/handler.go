@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,6 +54,17 @@ type ConversionTrigger interface {
 	TriggerConversion(id int64, filename string)
 }
 
+// StatsComputer derives the dashboard stats (player count, kills, force
+// composition) for one operation and stores them.
+//
+// Separate from ConversionTrigger because the two are independent: the stats
+// come out of the manifest and are just as computable for a recording that will
+// never be converted. Conversion writes them as part of its own manifest read,
+// so this is only wired up when conversion is disabled.
+type StatsComputer interface {
+	ComputeStatsFor(ctx context.Context, id int64, filename string) error
+}
+
 type Handler struct {
 	repoOperation     *RepoOperation
 	repoMarker        *RepoMarker
@@ -60,6 +72,7 @@ type Handler struct {
 	setting           Setting
 	jwt               *JWTManager
 	conversionTrigger ConversionTrigger   // optional, nil if conversion disabled
+	statsComputer     StatsComputer       // optional, set when conversion is disabled
 	staticFS          fs.FS               // optional, nil disables static file serving
 	maptoolMgr        *maptool.JobManager // optional, nil if maptool disabled
 	maptoolCfg        *maptoolConfig      // optional, nil if maptool disabled
@@ -80,6 +93,14 @@ type HandlerOption func(*Handler)
 func WithConversionTrigger(trigger ConversionTrigger) HandlerOption {
 	return func(h *Handler) {
 		h.conversionTrigger = trigger
+	}
+}
+
+// WithStatsComputer sets the stats computer used when conversion is disabled,
+// so an upload still gets its dashboard stats.
+func WithStatsComputer(computer StatsComputer) HandlerOption {
+	return func(h *Handler) {
+		h.statsComputer = computer
 	}
 }
 
@@ -497,6 +518,19 @@ func (h *Handler) StoreOperation(w http.ResponseWriter, r *http.Request) {
 		if err = h.repoOperation.UpdateConversionStatus(ctx, op.ID, ConversionStatusCompleted); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		// Conversion normally computes these while it has the manifest open.
+		// With it disabled nothing else would, and the recording would play back
+		// fine while the dashboard showed no force composition, no kills and a
+		// dash for the player count. Async so a large recording does not hold the
+		// upload response open; the row is already usable without it.
+		if h.statsComputer != nil {
+			id, filename := op.ID, op.Filename
+			go func() {
+				if err := h.statsComputer.ComputeStatsFor(context.Background(), id, filename); err != nil {
+					slog.Warn("failed to compute stats after upload", "operation_id", id, "error", err)
+				}
+			}()
 		}
 	}
 

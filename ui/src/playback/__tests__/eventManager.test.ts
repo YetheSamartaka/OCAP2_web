@@ -7,6 +7,7 @@ import {
   getCounterStateAtFrame,
   type CounterState,
 } from "../events/counterEvent";
+import { ExplosionEvent, RadioTransmissionEvent } from "../events/supportEvents";
 import { EventManager } from "../eventManager";
 import { EntityManager } from "../entityManager";
 import { Unit } from "../entities/unit";
@@ -874,6 +875,104 @@ describe("EventManager", () => {
       expect(mgr.getEventsAtFrame(50)).toEqual([newEvent]);
       // Old frame should still be empty
       expect(mgr.getEventsAtFrame(10)).toEqual([]);
+    });
+  });
+  // ── Explosions and transmissions ──
+  //
+  // Both are indexed into their own array as well as the main event log, and
+  // both are ordered lazily on read rather than sorted on every insert: a mortar
+  // mission writes one explosion per round and a talkative operation keys up
+  // thousands of times, so a full sort per arrival is quadratic. That makes the
+  // dirty-flag behaviour worth pinning down -- a read that leaves the flag set,
+  // or an insert that fails to clear it, is a silently mis-ordered overlay.
+
+  const blast = (frameNum: number): ExplosionEvent =>
+    new ExplosionEvent(frameNum, frameNum, {
+      x: 0, y: 0, ammo: "Sh_155mm_AMOS", name: "155mm HE",
+      radius: 20, power: 100, firerId: -1, vehicleId: -1,
+      side: "WEST", source: "projectile",
+    });
+
+  const keyUp = (frameNum: number): RadioTransmissionEvent =>
+    new RadioTransmissionEvent(frameNum, frameNum, {
+      unitId: 1, radio: "AN/PRC-152", type: "SW", action: "Start",
+      channel: 1, additional: false, frequency: 69.9, code: "",
+    });
+
+  describe("explosion and transmission ordering", () => {
+    it("returns explosions oldest first even when they arrive out of order", () => {
+      [blast(30), blast(10), blast(20)].forEach((e) => mgr.addEvent(e));
+      expect(mgr.getExplosions().map((e) => e.frameNum)).toEqual([10, 20, 30]);
+    });
+
+    it("returns transmissions oldest first even when they arrive out of order", () => {
+      [keyUp(30), keyUp(10), keyUp(20)].forEach((e) => mgr.addEvent(e));
+      expect(mgr.getRadioTransmissions().map((e) => e.frameNum)).toEqual([10, 20, 30]);
+    });
+
+    it("re-orders after an event arrives following an earlier read", () => {
+      // The regression a lazy sort invites: the first read marks the array
+      // clean, and a later out-of-order insert has to mark it dirty again.
+      mgr.addEvent(blast(20));
+      expect(mgr.getExplosions().map((e) => e.frameNum)).toEqual([20]);
+
+      mgr.addEvent(blast(5));
+      expect(mgr.getExplosions().map((e) => e.frameNum)).toEqual([5, 20]);
+
+      mgr.addEvent(keyUp(20));
+      expect(mgr.getRadioTransmissions().map((e) => e.frameNum)).toEqual([20]);
+      mgr.addEvent(keyUp(5));
+      expect(mgr.getRadioTransmissions().map((e) => e.frameNum)).toEqual([5, 20]);
+    });
+
+    it("stays ordered across repeated reads with no inserts between", () => {
+      [blast(30), blast(10)].forEach((e) => mgr.addEvent(e));
+      expect(mgr.getExplosions().map((e) => e.frameNum)).toEqual([10, 30]);
+      expect(mgr.getExplosions().map((e) => e.frameNum)).toEqual([10, 30]);
+    });
+
+    it("keeps already-ordered arrivals in order", () => {
+      [blast(1), blast(2), blast(3)].forEach((e) => mgr.addEvent(e));
+      expect(mgr.getExplosions().map((e) => e.frameNum)).toEqual([1, 2, 3]);
+    });
+
+    it("still lists both kinds in the main event log", () => {
+      // Neither indexer returns early, because both belong in the event feed as
+      // well as their own overlay.
+      const e = blast(10);
+      const t = keyUp(11);
+      mgr.addEvent(e);
+      mgr.addEvent(t);
+      expect(mgr.getAll()).toEqual([e, t]);
+      expect(mgr.getEventsAtFrame(10)).toEqual([e]);
+    });
+
+    it("returns only blasts whose lifetime covers the frame, oldest first", () => {
+      [blast(30), blast(10), blast(20)].forEach((e) => mgr.addEvent(e));
+
+      // Lifetime 5: a blast is live for frames [f, f+5).
+      expect(mgr.getActiveExplosions(22, 5).map((e) => e.frameNum)).toEqual([20]);
+      expect(mgr.getActiveExplosions(10, 5).map((e) => e.frameNum)).toEqual([10]);
+      expect(mgr.getActiveExplosions(15, 5)).toEqual([]);
+      // A wide lifetime catches every blast already past, still ordered.
+      expect(mgr.getActiveExplosions(30, 100).map((e) => e.frameNum)).toEqual([10, 20, 30]);
+    });
+
+    it("does not treat a blast as live before it happens", () => {
+      mgr.addEvent(blast(20));
+      expect(mgr.getActiveExplosions(19, 10)).toEqual([]);
+    });
+
+    it("clear empties both indexes and leaves them ordered for the next recording", () => {
+      [blast(30), blast(10), keyUp(30), keyUp(10)].forEach((e) => mgr.addEvent(e));
+      mgr.clear();
+
+      expect(mgr.getExplosions()).toEqual([]);
+      expect(mgr.getRadioTransmissions()).toEqual([]);
+
+      mgr.addEvent(blast(7));
+      mgr.addEvent(blast(3));
+      expect(mgr.getExplosions().map((e) => e.frameNum)).toEqual([3, 7]);
     });
   });
 });

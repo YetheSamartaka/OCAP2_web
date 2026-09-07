@@ -38,13 +38,23 @@
   border-bottom: var(--border-subtle);
   padding: 0 4px;
   flex-shrink: 0;
+  /* The panel is a fixed 370px and the row has to hold every tab inside it.
+     Without this the row simply overflows and the last tab is clipped at the
+     panel's rounded edge rather than the row adapting to fit. */
+  overflow: hidden;
 }
 
 .tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
+  justify-content: center;
+  gap: 5px;
+  /* Equal shares of the panel, and allowed to shrink below their content width.
+     `min-width: 0` is the part that actually lets the label ellipsis instead of
+     forcing the row wider than its container. */
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 6px;
   border: none;
   border-bottom: 2px solid transparent;
   background: transparent;
@@ -57,6 +67,12 @@
   position: relative;
 }
 
+/* The icon is the tab's only always-legible identifier, so it never gets
+   squeezed -- the label gives up room first. */
+.tab > svg {
+  flex-shrink: 0;
+}
+
 .tab:hover {
   color: var(--text-muted);
 }
@@ -64,10 +80,19 @@
 .tabActive {
   border-bottom-color: var(--accent-primary);
   color: var(--text-primary);
+  /* The tab you are on always reads in full; the others give up their share
+     first. This is what keeps a long label in German or Russian legible where
+     equal shares alone would truncate every tab including the current one. */
+  flex-shrink: 0;
 }
 
 .tabLabel {
   font-size: var(--font-size-md);
+  /* Truncate rather than push the row wider. The full text stays reachable
+     through the button's title tooltip. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tabBadge {

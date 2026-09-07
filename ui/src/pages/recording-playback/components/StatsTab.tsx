@@ -1,11 +1,14 @@
-import { createMemo, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import type { Side } from "../../../data/types";
 import { SIDE_COLORS_UI, SIDE_BG_COLORS } from "../../../config/sideColors";
 import { useEngine } from "../../../hooks/useEngine";
 import { useCustomize } from "../../../hooks/useCustomize";
 import { useI18n } from "../../../hooks/useLocale";
+import { buildMovementStats, formatDistance } from "../movement";
 import styles from "./SidePanel.module.css";
+import commsStyles from "./CommsTab.module.css";
+import movementStyles from "./MovementTable.module.css";
 
 const SIDES: Side[] = ["WEST", "EAST", "GUER", "CIV", "VIRTUAL"];
 
@@ -44,6 +47,19 @@ export function StatsTab(): JSX.Element {
   const serverFps = createMemo(() =>
     engine.eventManager.getServerFpsStats(engine.currentFrame()),
   );
+
+  // Distance covers the whole mission, so a chunked recording needs every chunk;
+  // a JSON one resolves immediately and this never blocks.
+  const [movementReady, setMovementReady] = createSignal(false);
+  createEffect(() => {
+    void engine.ensureAllChunks().then(() => setMovementReady(true));
+  });
+
+  const movement = createMemo(() => {
+    movementReady();
+    engine.endFrame();
+    return buildMovementStats(engine);
+  });
 
   const formatFps = (value: number): string => value.toFixed(1);
   const fpsColor = (value: number): string => {
@@ -254,6 +270,58 @@ export function StatsTab(): JSX.Element {
               </For>
             </div>
           </div>
+        </Show>
+
+        {/* ── Distance and pace ── */}
+        <div class={styles.statsLabel}>{t("movement")}</div>
+        <Show
+          when={movementReady()}
+          fallback={<div class={commsStyles.note}>{t("movement_loading")}</div>}
+        >
+          <Show
+            when={movement().length > 0}
+            fallback={<div class={commsStyles.note}>{t("movement_none")}</div>}
+          >
+            <div class={styles.leaderboard} style={{ "margin-top": "8px" }}>
+              <div class={styles.leaderboardRow} style={{ "margin-bottom": "4px" }}>
+                <span class={styles.leaderboardRank}>#</span>
+                <span
+                  class={styles.leaderboardName}
+                  style={{ color: "var(--text-dimmer)", "font-size": "9px" }}
+                >
+                  {t("name")}
+                </span>
+                <span class={movementStyles.col} title={t("movement_on_foot")}>
+                  {t("movement_foot_short")}
+                </span>
+                <span class={movementStyles.col} title={t("movement_mounted")}>
+                  {t("movement_mounted_short")}
+                </span>
+                <span class={movementStyles.colTotal} title={t("movement_total")}>
+                  {t("movement_total_short")}
+                </span>
+              </div>
+              <For each={movement().slice(0, 20)}>
+                {(entry, i) => (
+                  <div
+                    class={styles.leaderboardRow}
+                    classList={{ [styles.leaderboardRowAlt]: i() % 2 === 1 }}
+                  >
+                    <span class={styles.leaderboardRank}>{i() + 1}</span>
+                    <span
+                      class={styles.leaderboardName}
+                      style={{ color: entry.side ? SIDE_COLORS_UI[entry.side] : undefined }}
+                    >
+                      {entry.name}
+                    </span>
+                    <span class={movementStyles.col}>{formatDistance(entry.onFoot)}</span>
+                    <span class={movementStyles.col}>{formatDistance(entry.mounted)}</span>
+                    <span class={movementStyles.colTotal}>{formatDistance(entry.total)}</span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
         </Show>
       </div>
     </div>

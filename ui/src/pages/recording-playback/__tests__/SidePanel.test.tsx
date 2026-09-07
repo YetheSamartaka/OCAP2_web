@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe("SidePanel", () => {
-  it("renders three tab buttons (Units, Events, Stats)", () => {
+  it("renders every tab button", () => {
     const { engine, renderer } = createTestEngine();
     engine.loadRecording(makeManifest([unitDef()]));
 
@@ -27,9 +27,29 @@ describe("SidePanel", () => {
       </TestProviders>
     ));
 
-    expect(screen.getByText("Units")).toBeTruthy();
-    expect(screen.getByText("Events")).toBeTruthy();
-    expect(screen.getByText("Stats")).toBeTruthy();
+    for (const label of ["Units", "Events", "ORBAT", "Comms", "Stats"]) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+  });
+
+  // Five tabs share a panel fixed at 370px, so an inactive label can be
+  // truncated to fit. The tooltip is the only place the full name survives, and
+  // it is what stops a clipped tab from becoming an unidentifiable icon.
+  it("gives every tab a title carrying its full label", () => {
+    const { engine, renderer } = createTestEngine();
+    engine.loadRecording(makeManifest([unitDef()]));
+
+    const [activeTab] = createSignal("units");
+
+    render(() => (
+      <TestProviders engine={engine} renderer={renderer}>
+        <SidePanel activeTab={activeTab} onTabChange={() => {}} />
+      </TestProviders>
+    ));
+
+    for (const label of ["Units", "Events", "ORBAT", "Comms", "Stats"]) {
+      expect(screen.getByTitle(label)).toBeTruthy();
+    }
   });
 
   it("calls onTabChange when clicking a tab", () => {

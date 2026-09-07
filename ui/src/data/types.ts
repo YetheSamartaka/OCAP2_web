@@ -309,6 +309,99 @@ export interface ZeusPingPayload {
   y: number;
 }
 
+/**
+ * A detonation. `radius` is the ammo's indirectHitRange straight out of CfgAmmo,
+ * so it is the area the blast could damage, not a rendering choice.
+ */
+export interface ExplosionPayload {
+  x: number;
+  y: number;
+  ammo: string;
+  name: string;
+  radius: number;
+  power: number;
+  firerId: number;
+  vehicleId: number;
+  side: string;
+  source: "projectile" | "explosive" | string;
+}
+
+/**
+ * A vehicle was repaired, refuelled or rearmed. `from`/`to` span the whole job:
+ * fuel fraction for a refuel, damage for a repair, both 0 for a rearm, which
+ * describes itself with the magazine fields instead.
+ */
+export interface ServiceEventPayload {
+  kind: "repair" | "refuel" | "rearm" | string;
+  vehicleId: number;
+  vehicleName: string;
+  unitId: number;
+  unitName: string;
+  side: string;
+  x: number;
+  y: number;
+  from: number;
+  to: number;
+  magazine?: string;
+  magazineName?: string;
+  count?: number;
+  rounds?: number;
+}
+
+/**
+ * A static weapon was assembled from bags or taken apart. `vehicleId` points at
+ * the gun's own entity record, or -1 when it never got one.
+ */
+export interface StaticWeaponPayload {
+  action: "assembled" | "disassembled" | string;
+  unitId: number;
+  unitName: string;
+  side: string;
+  vehicleId: number;
+  class: string;
+  name: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * One push-to-talk. `Start` and `Stop` arrive as separate events from the same
+ * unit, so a transmission's duration is the gap between the pair.
+ *
+ * Carries no range: what decides who could hear it is the radio, whose range
+ * and mod are recorded by that player's radioSnapshot. A reader joins the two.
+ */
+export interface RadioTransmissionPayload {
+  unitId: number;
+  radio: string;
+  type: "SW" | "LR" | "SR" | string;
+  action: "Start" | "Stop" | string;
+  channel: number;
+  additional: boolean;
+  frequency: number;
+  code: string;
+}
+
+export interface RadioTransmissionEventDef {
+  type: "radioTransmission";
+  payload: RadioTransmissionPayload;
+}
+
+export interface ExplosionEventDef {
+  type: "explosion";
+  payload: ExplosionPayload;
+}
+
+export interface ServiceEventDef {
+  type: "serviceEvent";
+  payload: ServiceEventPayload;
+}
+
+export interface StaticWeaponEventDef {
+  type: "staticWeapon";
+  payload: StaticWeaponPayload;
+}
+
 export interface ZeusEntityEventDef {
   type: "zeusEntity";
   payload: ZeusEntityPayload;
@@ -345,6 +438,10 @@ export type EventDef = { frameNum: number } & (
   | ZeusRemoteControlEventDef
   | ZeusCameraEventDef
   | ZeusPingEventDef
+  | ExplosionEventDef
+  | ServiceEventDef
+  | StaticWeaponEventDef
+  | RadioTransmissionEventDef
 );
 
 // --------------- Markers ---------------

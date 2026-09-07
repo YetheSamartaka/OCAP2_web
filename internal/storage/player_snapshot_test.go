@@ -180,3 +180,166 @@ func TestParseZeusPingEventPreservesPayload(t *testing.T) {
 func TestZeusPingIsNotAPlayerSnapshotEvent(t *testing.T) {
 	require.False(t, IsPlayerSnapshotEvent("zeusPing"))
 }
+
+func TestParseExplosionEventPreservesPayload(t *testing.T) {
+	event := parseEventArray([]interface{}{
+		float64(310),
+		"explosion",
+		map[string]interface{}{
+			"x":         float64(3411),
+			"y":         float64(9002),
+			"ammo":      "Sh_155mm_AMOS",
+			"name":      "155mm HE",
+			"radius":    float64(28),
+			"power":     float64(180),
+			"firerId":   float64(17),
+			"vehicleId": float64(4),
+			"side":      "WEST",
+			"source":    "projectile",
+		},
+	})
+
+	require.NotNil(t, event)
+	require.Equal(t, "explosion", event.Type)
+	require.Equal(t, uint32(310), event.FrameNum)
+
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(event.Message), &payload))
+	require.Equal(t, "Sh_155mm_AMOS", payload["ammo"])
+	require.Equal(t, float64(28), payload["radius"])
+	require.Equal(t, float64(17), payload["firerId"])
+	require.Equal(t, "projectile", payload["source"])
+}
+
+func TestParseServiceEventPreservesPayload(t *testing.T) {
+	event := parseEventArray([]interface{}{
+		float64(75),
+		"serviceEvent",
+		map[string]interface{}{
+			"kind":        "refuel",
+			"vehicleId":   float64(9),
+			"vehicleName": "Hunter",
+			"unitId":      float64(3),
+			"unitName":    "Danny",
+			"side":        "WEST",
+			"x":           float64(1200),
+			"y":           float64(3400),
+			"from":        0.12,
+			"to":          0.98,
+		},
+	})
+
+	require.NotNil(t, event)
+	require.Equal(t, "serviceEvent", event.Type)
+
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(event.Message), &payload))
+	require.Equal(t, "refuel", payload["kind"])
+	require.Equal(t, float64(9), payload["vehicleId"])
+	require.Equal(t, 0.12, payload["from"])
+	require.Equal(t, 0.98, payload["to"])
+}
+
+func TestParseStaticWeaponEventPreservesPayload(t *testing.T) {
+	event := parseEventArray([]interface{}{
+		float64(512),
+		"staticWeapon",
+		map[string]interface{}{
+			"action":    "assembled",
+			"unitId":    float64(3),
+			"unitName":  "Danny",
+			"side":      "WEST",
+			"vehicleId": float64(88),
+			"class":     "B_HMG_01_high_F",
+			"name":      "M2 (High)",
+			"x":         float64(1200),
+			"y":         float64(3400),
+		},
+	})
+
+	require.NotNil(t, event)
+	require.Equal(t, "staticWeapon", event.Type)
+
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(event.Message), &payload))
+	require.Equal(t, "assembled", payload["action"])
+	require.Equal(t, float64(88), payload["vehicleId"])
+	require.Equal(t, "M2 (High)", payload["name"])
+}
+
+// These three are low-volume, global, and readable without selecting a unit, so
+// like the Zeus events they stay in the manifest rather than moving into a
+// per-player snapshot sidecar.
+func TestSupportEventsAreNotPlayerSnapshotEvents(t *testing.T) {
+	require.False(t, IsPlayerSnapshotEvent("explosion"))
+	require.False(t, IsPlayerSnapshotEvent("serviceEvent"))
+	require.False(t, IsPlayerSnapshotEvent("staticWeapon"))
+}
+
+func TestParseRadioTransmissionPreservesPayload(t *testing.T) {
+	event := parseEventArray([]interface{}{
+		float64(30),
+		"radioTransmission",
+		map[string]interface{}{
+			"unitId":     float64(7),
+			"radio":      "AN/PRC-152",
+			"type":       "SW",
+			"action":     "Start",
+			"channel":    float64(3),
+			"additional": false,
+			"frequency":  69.9,
+			"code":       "0451",
+		},
+	})
+
+	require.NotNil(t, event)
+	require.Equal(t, "radioTransmission", event.Type)
+	require.Equal(t, uint32(30), event.FrameNum)
+
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(event.Message), &payload))
+	require.Equal(t, float64(7), payload["unitId"])
+	require.Equal(t, "SW", payload["type"])
+	require.Equal(t, "Start", payload["action"])
+	require.Equal(t, 69.9, payload["frequency"])
+	require.Equal(t, "0451", payload["code"])
+}
+
+// Transmissions are global and low-volume, so they stay in the manifest rather
+// than moving into a per-player snapshot sidecar.
+func TestRadioTransmissionIsNotAPlayerSnapshotEvent(t *testing.T) {
+	require.False(t, IsPlayerSnapshotEvent("radioTransmission"))
+}
+
+// The recorder writes a blast radius to one decimal rather than rounding to a
+// whole metre. Recordings written before that change carry plain integers, so
+// the manifest parser has to hand both back untouched -- it stores the payload
+// as raw JSON precisely so a numeric shape change on the recorder side is not a
+// format break.
+func TestParseExplosionRadiusPrecisionIsPreserved(t *testing.T) {
+	for name, radius := range map[string]float64{
+		"legacy integer": 28,
+		"one decimal":    5.4,
+		"sub metre":      0.4,
+	} {
+		t.Run(name, func(t *testing.T) {
+			event := parseEventArray([]interface{}{
+				float64(10),
+				"explosion",
+				map[string]interface{}{
+					"x":      float64(1),
+					"y":      float64(2),
+					"ammo":   "Sh_155mm_AMOS",
+					"radius": radius,
+				},
+			})
+
+			require.NotNil(t, event)
+			require.Equal(t, "explosion", event.Type)
+
+			var payload map[string]interface{}
+			require.NoError(t, json.Unmarshal([]byte(event.Message), &payload))
+			require.Equal(t, radius, payload["radius"])
+		})
+	}
+}

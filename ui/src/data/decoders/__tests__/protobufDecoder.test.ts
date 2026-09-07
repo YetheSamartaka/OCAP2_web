@@ -165,6 +165,34 @@ describe("ProtobufDecoder.decodeManifest", () => {
     ]);
   });
 
+  it("decodes support payloads from the generic event message", () => {
+    const buffer = encodePb(PbManifest, {
+      version: 1,
+      worldName: "Altis",
+      missionName: "Support",
+      endFrame: 600,
+      chunkSize: 300,
+      captureDelayMs: 1000,
+      chunkCount: 1,
+      events: [
+        { frameNum: 10, type: "explosion", message: JSON.stringify({ x: 3411, y: 9002, ammo: "Sh_155mm_AMOS", name: "155mm HE", radius: 28, power: 180, firerId: 17, vehicleId: 4, side: "WEST", source: "projectile" }) },
+        // A blast with no radius cannot be drawn and says nothing a hit event does not.
+        { frameNum: 11, type: "explosion", message: JSON.stringify({ x: 1, y: 2, radius: 0 }) },
+        { frameNum: 20, type: "serviceEvent", message: JSON.stringify({ kind: "rearm", vehicleId: 9, vehicleName: "Hunter", unitId: 3, unitName: "Danny", side: "WEST", x: 1, y: 2, from: 0, to: 0, magazine: "500Rnd_127x99_mag_Tracer_Red", magazineName: "12.7 mm", count: 2, rounds: 500 }) },
+        { frameNum: 30, type: "staticWeapon", message: JSON.stringify({ action: "disassembled", unitId: 3, unitName: "Danny", side: "WEST", vehicleId: 88, class: "B_HMG_01_high_F", name: "M2 (High)", x: 1, y: 2 }) },
+        { frameNum: 31, type: "staticWeapon", message: "not json" },
+        { frameNum: 40, type: "radioTransmission", message: JSON.stringify({ unitId: 3, radio: "AN/PRC-152", type: "SW", action: "Stop", channel: 1, additional: false, frequency: 69.9, code: "0451" }) },
+      ],
+    });
+
+    expect(decoder.decodeManifest(buffer).events).toEqual([
+      { frameNum: 10, type: "explosion", payload: { x: 3411, y: 9002, ammo: "Sh_155mm_AMOS", name: "155mm HE", radius: 28, power: 180, firerId: 17, vehicleId: 4, side: "WEST", source: "projectile" } },
+      { frameNum: 20, type: "serviceEvent", payload: { kind: "rearm", vehicleId: 9, vehicleName: "Hunter", unitId: 3, unitName: "Danny", side: "WEST", x: 1, y: 2, from: 0, to: 0, magazine: "500Rnd_127x99_mag_Tracer_Red", magazineName: "12.7 mm", count: 2, rounds: 500 } },
+      { frameNum: 30, type: "staticWeapon", payload: { action: "disassembled", unitId: 3, unitName: "Danny", side: "WEST", vehicleId: 88, class: "B_HMG_01_high_F", name: "M2 (High)", x: 1, y: 2 } },
+      { frameNum: 40, type: "radioTransmission", payload: { unitId: 3, radio: "AN/PRC-152", type: "SW", action: "Stop", channel: 1, additional: false, frequency: 69.9, code: "0451" } },
+    ]);
+  });
+
   it("passes diff-encoded snapshots through untouched", () => {
     const diff = { unitId: 7, diffOf: 10, set: { vanilla: { load: 0.61 } } };
     const buffer = encodePb(PbManifest, {

@@ -11,6 +11,7 @@ import {
   ZeusPingEvent,
   ZeusRemoteControlEvent,
 } from "./events/zeusEvents";
+import { ExplosionEvent, RadioTransmissionEvent } from "./events/supportEvents";
 import { applySnapshotDiff, isSnapshotDiff } from "../data/snapshotDiff";
 import type { PlayerSnapshotPayload, PlayerSnapshotType } from "../data/types";
 import { ZEUS_RC_KILL_GRACE_FRAMES, type ZeusCameraSample, type ZeusEntityInfo, type ZeusFrameState } from "./zeus";
@@ -29,6 +30,15 @@ export class EventManager {
   private zeusRemoteControl: ZeusRemoteControlEvent[] = [];
   private zeusCameras = new Map<number, ZeusCameraEvent[]>();
   private zeusPings: ZeusPingEvent[] = [];
+  private explosions: ExplosionEvent[] = [];
+  private transmissions: RadioTransmissionEvent[] = [];
+
+  // Both arrays are ordered lazily, on the first read after an insert. Events
+  // normally arrive in frame order and the sort is then a no-op scan, but
+  // nothing guarantees it -- a sidecar or a late chunk can interleave -- so
+  // order is established on read instead of assumed.
+  private explosionsSorted = true;
+  private transmissionsSorted = true;
 
   /** Add an event and index it by frame number. */
   addEvent(event: GameEvent): void {
@@ -70,6 +80,23 @@ export class EventManager {
       series.sort((a, b) => a.frameNum - b.frameNum);
       this.zeusCameras.set(event.payload.curatorId, series);
       return;
+    }
+    if (event instanceof RadioTransmissionEvent) {
+      // Deliberately no early return: a transmission is indexed for the comms
+      // rollup and still belongs in this.events so it shows in the event log.
+      //
+      // Sorted on read rather than here. Zeus pings below sort per insert, which
+      // is fine at a few dozen; a talkative operation keys up thousands of times
+      // and sorting the whole array once per arrival is quadratic.
+      this.transmissions.push(event);
+      this.transmissionsSorted = false;
+    }
+    if (event instanceof ExplosionEvent) {
+      // Deliberately no early return: a blast is indexed for the map overlay and
+      // still belongs in this.events so it shows in the event log.
+      // Sorted on read, as above: a mortar mission writes one per round.
+      this.explosions.push(event);
+      this.explosionsSorted = false;
     }
     if (event instanceof ZeusPingEvent) {
       // Deliberately no early return: a ping is indexed for the map overlay and
@@ -139,6 +166,11 @@ export class EventManager {
     }
   }
 
+  /** Players who have any snapshot indexed, in id order. */
+  getPlayerSnapshotUnitIds(): number[] {
+    return [...this.playerSnapshots.keys()].sort((a, b) => a - b);
+  }
+
   /** Whether any snapshot has been indexed for a player. */
   hasPlayerSnapshots(unitId: number): boolean {
     return (this.playerSnapshots.get(unitId)?.size ?? 0) > 0;
@@ -189,6 +221,37 @@ export class EventManager {
     return this.zeusPings.filter(
       (ping) => ping.frameNum <= frame && frame < ping.frameNum + lifetimeFrames,
     );
+  }
+
+  /**
+   * Blasts whose map lifetime covers `frame`, oldest first. A blast is drawn
+   * from its own frame until `frameNum + lifetimeFrames`.
+   */
+  getActiveExplosions(frame: number, lifetimeFrames: number): ExplosionEvent[] {
+    return this.getExplosions().filter(
+      (blast) => blast.frameNum <= frame && frame < blast.frameNum + lifetimeFrames,
+    );
+  }
+
+  /**
+   * Every push-to-talk in the recording, oldest first. Start and Stop are
+   * separate entries here; `pairTransmissions` folds them.
+   */
+  getRadioTransmissions(): RadioTransmissionEvent[] {
+    if (!this.transmissionsSorted) {
+      this.transmissions.sort((a, b) => a.frameNum - b.frameNum);
+      this.transmissionsSorted = true;
+    }
+    return this.transmissions;
+  }
+
+  /** Every explosion in the recording, oldest first. */
+  getExplosions(): ExplosionEvent[] {
+    if (!this.explosionsSorted) {
+      this.explosions.sort((a, b) => a.frameNum - b.frameNum);
+      this.explosionsSorted = true;
+    }
+    return this.explosions;
   }
 
   /** Every ping in the recording, oldest first. */
@@ -438,5 +501,9 @@ export class EventManager {
     this.zeusRemoteControl = [];
     this.zeusCameras = new Map();
     this.zeusPings = [];
+    this.explosions = [];
+    this.transmissions = [];
+    this.explosionsSorted = true;
+    this.transmissionsSorted = true;
   }
 }

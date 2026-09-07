@@ -15,6 +15,10 @@ export interface EventFilterState {
   showTerminalHacks: boolean;
   showMissionEvents: boolean;
   showZeusPings: boolean;
+  showExplosions: boolean;
+  showServicing: boolean;
+  showConstructions: boolean;
+  showTransmissions: boolean;
   sideFilter: SideFilter;
 }
 
@@ -26,6 +30,14 @@ export const DEFAULT_EVENT_FILTERS: EventFilterState = {
   showTerminalHacks: true,
   showMissionEvents: true,
   showZeusPings: true,
+  // Off by default like hits: a mortar mission writes one per round, and the
+  // blast circles are on the map either way.
+  showExplosions: false,
+  showServicing: true,
+  showConstructions: true,
+  // Off by default like hits and explosions: a talkative op keys up hundreds of
+  // times, and the Comms tab is where transmissions are actually readable.
+  showTransmissions: false,
   sideFilter: "all",
 };
 
@@ -44,6 +56,10 @@ const EVENT_TYPE_ITEMS: EventTypeItem[] = [
   { key: "showTerminalHacks", labelKey: "terminal_hacks" },
   { key: "showMissionEvents", labelKey: "mission_events" },
   { key: "showZeusPings", labelKey: "zeus_pings" },
+  { key: "showExplosions", labelKey: "explosions" },
+  { key: "showServicing", labelKey: "servicing" },
+  { key: "showConstructions", labelKey: "constructions" },
+  { key: "showTransmissions", labelKey: "transmissions" },
 ];
 
 const SIDE_FILTER_OPTIONS: { key: SideFilter; labelKey: string }[] = [
@@ -61,6 +77,10 @@ function isNonDefault(state: EventFilterState): boolean {
     state.showTerminalHacks !== DEFAULT_EVENT_FILTERS.showTerminalHacks ||
     state.showMissionEvents !== DEFAULT_EVENT_FILTERS.showMissionEvents ||
     state.showZeusPings !== DEFAULT_EVENT_FILTERS.showZeusPings ||
+    state.showExplosions !== DEFAULT_EVENT_FILTERS.showExplosions ||
+    state.showServicing !== DEFAULT_EVENT_FILTERS.showServicing ||
+    state.showConstructions !== DEFAULT_EVENT_FILTERS.showConstructions ||
+    state.showTransmissions !== DEFAULT_EVENT_FILTERS.showTransmissions ||
     state.sideFilter !== DEFAULT_EVENT_FILTERS.sideFilter
   );
 }

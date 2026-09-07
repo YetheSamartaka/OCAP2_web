@@ -40,6 +40,8 @@ export function UnitsTab(props: UnitsTabProps): JSX.Element {
   const { t } = useI18n();
   const showKillCount = (): boolean => !customize().disableKillCount;
   const [expandedGroups, setExpandedGroups] = createSignal<Set<string>>(new Set());
+  const [search, setSearch] = createSignal("");
+  const query = createMemo(() => search().trim().toLowerCase());
   const [selectedUnit, setSelectedUnit] = createSignal<number | null>(null);
   const selectedProfileUnit = createMemo(() => {
     const id = selectedUnit();
@@ -90,11 +92,30 @@ export function UnitsTab(props: UnitsTabProps): JSX.Element {
     return "inactive";
   };
 
+  /**
+   * Name shown in the list. Zeus curators are renamed as they take over units,
+   * so their label only exists in the frame snapshot.
+   */
+  const unitLabel = (unit: Unit): string => {
+    if (unit.type === "zeus") {
+      return engine.entitySnapshots().get(unit.id)?.name || unit.name || `Unit ${unit.id}`;
+    }
+    return unit.name || `Unit ${unit.id}`;
+  };
+
+  /** A unit matches on its own name or role; the group name is tested separately. */
+  const unitMatches = (unit: Unit, q: string): boolean =>
+    unitLabel(unit).toLowerCase().includes(q) || (unit.role ?? "").toLowerCase().includes(q);
+
   const groups = createMemo((): GroupData[] => {
     const units = unitsForSide(activeSide());
+    const q = query();
     const groupMap = new Map<string, Unit[]>();
     for (const u of units) {
       const gn = u.groupName || t("ungrouped");
+      // A hit on the group name keeps the whole group, so searching a callsign
+      // still shows who is in it; otherwise only the matching members remain.
+      if (q && !gn.toLowerCase().includes(q) && !unitMatches(u, q)) continue;
       const arr = groupMap.get(gn);
       if (arr) {
         arr.push(u);
@@ -106,6 +127,10 @@ export function UnitsTab(props: UnitsTabProps): JSX.Element {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([name, units]) => ({ name, units }));
   });
+
+  /** While searching, every surviving group is open — hits must be visible. */
+  const isExpanded = (name: string): boolean =>
+    query().length > 0 || expandedGroups().has(name);
 
   const toggleGroup = (name: string) => {
     const current = expandedGroups();
@@ -167,11 +192,25 @@ export function UnitsTab(props: UnitsTabProps): JSX.Element {
         </For>
       </div>
 
+      {/* Search: player, unit or group name */}
+      <div class={styles.filterBar}>
+        <input
+          class={styles.filterInput}
+          type="text"
+          placeholder={t("search_units")}
+          value={search()}
+          onInput={(e) => setSearch(e.currentTarget.value)}
+        />
+      </div>
+
       {/* Scrollable unit list */}
       <div class={styles.tabContent}>
+        <Show when={groups().length > 0 || !query()}
+          fallback={<div class={styles.placeholder}>{t("no_units_match")}</div>}
+        >
         <For each={groups()}>
           {(group) => {
-            const expanded = () => expandedGroups().has(group.name);
+            const expanded = () => isExpanded(group.name);
             const alive = () => aliveCount(group.units);
             return (
               <>
@@ -200,12 +239,7 @@ export function UnitsTab(props: UnitsTabProps): JSX.Element {
                       const status = () => getUnitStatus(unit.id);
                       const selected = () => selectedUnit() === unit.id;
                       const snap = () => engine.entitySnapshots().get(unit.id);
-                      const displayName = () => {
-                        if (unit.type === "zeus") {
-                          return snap()?.name || unit.name || `Unit ${unit.id}`;
-                        }
-                        return unit.name || `Unit ${unit.id}`;
-                      };
+                      const displayName = () => unitLabel(unit);
                       const displayRole = () => {
                         if (unit.type === "zeus" && snap()?.controllingUnitId != null) {
                           return "";
@@ -271,6 +305,7 @@ export function UnitsTab(props: UnitsTabProps): JSX.Element {
             );
           }}
         </For>
+        </Show>
       </div>
       <Show when={selectedProfileUnit()}>
         {(unit) => (

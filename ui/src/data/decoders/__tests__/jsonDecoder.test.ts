@@ -65,6 +65,71 @@ describe("JsonDecoder.decodeManifest", () => {
     ]);
   });
 
+  it("decodes support events and skips malformed payloads", () => {
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "Support",
+      endFrame: 600,
+      captureDelay: 1,
+      events: [
+        [10, "explosion", { x: 3411, y: 9002, ammo: "Sh_155mm_AMOS", name: "155mm HE", radius: 28, power: 180, firerId: 17, vehicleId: 4, side: "WEST", source: "projectile" }],
+        // A blast with no radius cannot be drawn and says nothing a hit event does not.
+        [11, "explosion", { x: 1, y: 2, ammo: "B_556x45_Ball", name: "5.56", radius: 0 }],
+        [20, "serviceEvent", { kind: "refuel", vehicleId: 9, vehicleName: "Hunter", unitId: 3, unitName: "Danny", side: "WEST", x: 1, y: 2, from: 0.12, to: 0.98 }],
+        [21, "serviceEvent", { kind: "refuel", vehicleId: 9 }],
+        [30, "staticWeapon", { action: "assembled", unitId: 3, unitName: "Danny", side: "WEST", vehicleId: 88, class: "B_HMG_01_high_F", name: "M2 (High)", x: 1, y: 2 }],
+        [31, "staticWeapon", { action: "assembled" }],
+        [40, "radioTransmission", { unitId: 3, radio: "AN/PRC-152", type: "SW", action: "Start", channel: 1, additional: false, frequency: 69.9, code: "" }],
+        // A transmission with no frequency names no net, so it cannot be placed.
+        [41, "radioTransmission", { unitId: 3, radio: "AN/PRC-152", type: "SW", action: "Start" }],
+      ],
+    }));
+
+    expect(manifest.events).toEqual([
+      { frameNum: 10, type: "explosion", payload: { x: 3411, y: 9002, ammo: "Sh_155mm_AMOS", name: "155mm HE", radius: 28, power: 180, firerId: 17, vehicleId: 4, side: "WEST", source: "projectile" } },
+      { frameNum: 20, type: "serviceEvent", payload: { kind: "refuel", vehicleId: 9, vehicleName: "Hunter", unitId: 3, unitName: "Danny", side: "WEST", x: 1, y: 2, from: 0.12, to: 0.98 } },
+      { frameNum: 30, type: "staticWeapon", payload: { action: "assembled", unitId: 3, unitName: "Danny", side: "WEST", vehicleId: 88, class: "B_HMG_01_high_F", name: "M2 (High)", x: 1, y: 2 } },
+      { frameNum: 40, type: "radioTransmission", payload: { unitId: 3, radio: "AN/PRC-152", type: "SW", action: "Start", channel: 1, additional: false, frequency: 69.9, code: "" } },
+    ]);
+  });
+
+  // The recorder writes the blast radius to one decimal rather than rounding to
+  // a whole metre, because rounding turned any sub-metre blast into radius 0 and
+  // the guard below then discarded the event. Recordings written before that
+  // carry plain integers, so both have to read back.
+  it("keeps both a legacy integer radius and a fractional one", () => {
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "Radius",
+      endFrame: 600,
+      captureDelay: 1,
+      events: [
+        [10, "explosion", { x: 1, y: 2, ammo: "Sh_155mm_AMOS", name: "155mm", radius: 28 }],
+        [11, "explosion", { x: 1, y: 2, ammo: "HandGrenade", name: "Grenade", radius: 5.4 }],
+        [12, "explosion", { x: 1, y: 2, ammo: "Tiny", name: "Tiny", radius: 0.4 }],
+      ],
+    }));
+
+    expect(manifest.events.map((e) => (e as { payload: { radius: number } }).payload.radius))
+      .toEqual([28, 5.4, 0.4]);
+  });
+
+  it("still drops a blast with no drawable radius", () => {
+    const manifest = decoder.decodeManifest(toBuffer({
+      worldName: "Altis",
+      missionName: "Radius",
+      endFrame: 600,
+      captureDelay: 1,
+      events: [
+        [10, "explosion", { x: 1, y: 2, radius: 0 }],
+        [11, "explosion", { x: 1, y: 2, radius: -3 }],
+        [12, "explosion", { x: 1, y: 2 }],
+      ],
+    }));
+
+    expect(manifest.events).toEqual([]);
+  });
+
   it("skips empty dense-array entity holes", () => {
     const manifest = decoder.decodeManifest(toBuffer({
       worldName: "Altis",

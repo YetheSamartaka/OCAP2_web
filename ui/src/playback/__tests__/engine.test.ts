@@ -90,6 +90,132 @@ describe("PlaybackEngine", () => {
     vi.useRealTimers();
   });
 
+  // ─── Historical reads (trails, ORBAT, vehicle strips, distance) ───
+  //
+  // These two are the seam every whole-mission feature sits on, and the failure
+  // they guard against is silent: code written against `entity.positions` works
+  // on a JSON recording and returns nothing on a chunked one, which reads as
+  // "this player never moved" rather than as an error.
+
+  describe("getStateAt", () => {
+    it("reads per-frame state out of the chunk covering the frame", () => {
+      const cm = makeMockChunkManager(
+        makeChunkData(
+          new Map([
+            [
+              1,
+              [
+                { position: [10, 10], direction: 0, alive: 1, groupName: "Alpha", role: "Leader" },
+                { position: [20, 20], direction: 90, alive: 1, groupName: "Bravo", role: "Leader" },
+              ] as never,
+            ],
+          ]),
+        ),
+      );
+      engine.loadRecording(
+        makeManifest({ entities: [makeEntityDef({ id: 1 })] }),
+        cm,
+      );
+
+      // Fields EntitySnapshot drops are exactly why this method exists.
+      expect(engine.getStateAt(1, 0)?.groupName).toBe("Alpha");
+      expect(engine.getStateAt(1, 1)?.groupName).toBe("Bravo");
+      expect(engine.getStateAt(1, 1)?.position).toEqual([20, 20]);
+    });
+
+    it("falls back to the entity's own positions for a JSON recording", () => {
+      // No chunk manager at all: everything came down in one file.
+      engine.loadRecording(
+        makeManifest({
+          entities: [
+            makeEntityDef({
+              id: 1,
+              positions: [
+                { position: [5, 5], direction: 0, alive: 1, groupName: "Alpha" },
+                { position: [6, 6], direction: 0, alive: 1, groupName: "Alpha" },
+              ],
+            } as Partial<EntityDef>),
+          ],
+        }),
+      );
+
+      expect(engine.getStateAt(1, 1)?.position).toEqual([6, 6]);
+      expect(engine.getStateAt(1, 1)?.groupName).toBe("Alpha");
+    });
+
+    it("returns null outside the entity's lifespan rather than clamping", () => {
+      engine.loadRecording(
+        makeManifest({
+          entities: [
+            makeEntityDef({
+              id: 1,
+              startFrame: 10,
+              endFrame: 20,
+              positions: [{ position: [5, 5], direction: 0, alive: 1 }],
+            } as Partial<EntityDef>),
+          ],
+        }),
+      );
+
+      expect(engine.getStateAt(1, 5)).toBeNull();
+      expect(engine.getStateAt(1, 25)).toBeNull();
+    });
+
+    it("returns null for an unknown entity", () => {
+      engine.loadRecording(makeManifest());
+      expect(engine.getStateAt(999, 0)).toBeNull();
+    });
+
+    it("returns null for a frame whose chunk is not loaded, so callers see a gap", () => {
+      // getChunkForFrame returning null is what an unloaded chunk looks like.
+      const cm = makeMockChunkManager(null);
+      engine.loadRecording(makeManifest({ entities: [makeEntityDef({ id: 1 })] }), cm);
+
+      expect(engine.getStateAt(1, 50)).toBeNull();
+    });
+
+    it("getPositionAt is the same lookup narrowed to the position", () => {
+      engine.loadRecording(
+        makeManifest({
+          entities: [
+            makeEntityDef({
+              id: 1,
+              positions: [{ position: [7, 8], direction: 0, alive: 1 }],
+            } as Partial<EntityDef>),
+          ],
+        }),
+      );
+
+      expect(engine.getPositionAt(1, 0)).toEqual([7, 8]);
+      expect(engine.getPositionAt(1, 999)).toBeNull();
+    });
+  });
+
+  describe("ensureAllChunks", () => {
+    it("loads every chunk of a chunked recording exactly once each", async () => {
+      const cm = makeMockChunkManager();
+      (cm.loadChunk as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      engine.loadRecording(makeManifest({ chunkCount: 4 }), cm);
+
+      await engine.ensureAllChunks();
+
+      expect(cm.loadChunk).toHaveBeenCalledTimes(4);
+      expect((cm.loadChunk as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual([
+        0, 1, 2, 3,
+      ]);
+    });
+
+    it("resolves immediately for a JSON recording, fetching nothing", async () => {
+      engine.loadRecording(makeManifest({ chunkCount: 0 }));
+      await expect(engine.ensureAllChunks()).resolves.toBeUndefined();
+    });
+
+    it("resolves when a recording has no chunk manager even if the manifest claims chunks", async () => {
+      engine.loadRecording(makeManifest({ chunkCount: 5 }));
+      await expect(engine.ensureAllChunks()).resolves.toBeUndefined();
+    });
+  });
+
   // ─── Player snapshot sidecars ───
 
   describe("ensurePlayerSnapshots", () => {
