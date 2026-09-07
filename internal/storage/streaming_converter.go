@@ -278,7 +278,7 @@ func (sc *Converter) Convert(ctx context.Context, jsonPath, outputPath string) e
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(outputPath, "manifest.pb"), data, 0644); err != nil {
+	if err := WriteArtifact(filepath.Join(outputPath, "manifest.pb"), data); err != nil {
 		return fmt.Errorf("write manifest: %w", err)
 	}
 
@@ -331,7 +331,7 @@ func (sc *Converter) assembleChunk(bucket *ChunkBucket, chunksDir string, chunkI
 	}
 
 	path := filepath.Join(chunksDir, fmt.Sprintf("%04d.pb", chunkIdx))
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := WriteArtifact(path, data); err != nil {
 		return fmt.Errorf("write chunk: %w", err)
 	}
 

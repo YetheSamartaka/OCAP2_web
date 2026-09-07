@@ -117,7 +117,7 @@ func WritePlayerSnapshots(outputPath string, byUnit map[uint32][]*pbv1.Event) er
 			return fmt.Errorf("marshal snapshots for unit %d: %w", unitID, err)
 		}
 		path := filepath.Join(dir, fmt.Sprintf("%d.pb", unitID))
-		if err := os.WriteFile(path, data, 0644); err != nil {
+		if err := WriteArtifact(path, data); err != nil {
 			return fmt.Errorf("write snapshots for unit %d: %w", unitID, err)
 		}
 	}

@@ -46,7 +46,7 @@ func (w *ProtobufWriterV1) WriteManifest(ctx context.Context, outputPath string,
 	}
 
 	// Write file
-	if err := os.WriteFile(filepath.Join(outputPath, "manifest.pb"), data, 0644); err != nil {
+	if err := WriteArtifact(filepath.Join(outputPath, "manifest.pb"), data); err != nil {
 		return fmt.Errorf("write manifest: %w", err)
 	}
 
@@ -291,7 +291,7 @@ func (w *ProtobufWriterV1) writeChunk(chunksDir string, index uint32, chunk *pbv
 		return fmt.Errorf("marshal chunk: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := WriteArtifact(path, data); err != nil {
 		return fmt.Errorf("write chunk: %w", err)
 	}
 
