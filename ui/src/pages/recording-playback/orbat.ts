@@ -1,7 +1,7 @@
 import type { PlaybackEngine } from "../../playback/engine";
 import { Unit } from "../../playback/entities/unit";
 import { Vehicle } from "../../playback/entities/vehicle";
-import type { Side } from "../../data/types";
+import type { EntityState, Side } from "../../data/types";
 
 /**
  * Force structure read at a frame.
@@ -39,6 +39,19 @@ function isLeader(role: string): boolean {
 }
 
 /**
+ * True when this entity is a player slot at, or as of, `frame`.
+ *
+ * Both sources are needed. The per-frame flag alone loses a player the moment
+ * they are killed or disconnect — the recorder keeps writing their body as an
+ * AI-flagged unit — so a squad would empty out over the mission. The entity
+ * flag alone misses someone who took over an AI slot mid-mission, because that
+ * is only ever recorded per frame.
+ */
+function isPlayerSlot(entity: Unit, state: EntityState): boolean {
+  return entity.isPlayer || state.isPlayer === true;
+}
+
+/**
  * Build the order of battle for one side at a frame.
  *
  * Leaders sort to the top of their group, then players, then the rest by name,
@@ -48,7 +61,8 @@ function isLeader(role: string): boolean {
  * whom, and on a populated mission the AI outnumbers the players heavily enough
  * to bury exactly that: filler squads the players never interacted with become
  * most of the list. A group with no players in it drops out entirely rather than
- * appearing empty. Pass `playersOnly: false` for the full roster.
+ * appearing empty. A side with no players at all comes back empty. Pass
+ * `playersOnly: false` for the full roster.
  */
 export function buildOrbat(
   engine: PlaybackEngine,
@@ -59,6 +73,15 @@ export function buildOrbat(
   const playersOnly = options.playersOnly ?? true;
   const groups = new Map<string, OrbatMember[]>();
 
+  /**
+   * One row per named slot, so a respawn or a reconnect does not list the same
+   * player twice. Both entities can be live at this frame — the recorder keeps
+   * writing the abandoned body — and the longer-lived one is the real slot.
+   * Unnamed entities are never folded together; they are distinct bodies.
+   */
+  const bySlot = new Map<string, { group: string; member: OrbatMember; span: number }>();
+  const unnamed: Array<{ group: string; member: OrbatMember }> = [];
+
   for (const entity of engine.entityManager.getAll()) {
     if (!(entity instanceof Unit)) continue;
     if (frame < entity.startFrame || frame > entity.endFrame) continue;
@@ -67,15 +90,14 @@ export function buildOrbat(
     if (!state) continue;
     if ((state.side ?? entity.side) !== side) continue;
 
-    // Read from the frame rather than the entity: someone who took over an AI
-    // slot mid-mission is a player from that point on.
-    const isPlayer = state.isPlayer ?? entity.isPlayer;
+    const isPlayer = isPlayerSlot(entity, state);
     if (playersOnly && !isPlayer) continue;
 
     const groupName = state.groupName || entity.groupName || "";
+    const name = state.name || entity.name;
     const member: OrbatMember = {
       unitId: entity.id,
-      name: state.name || entity.name,
+      name,
       role: state.role ?? "",
       isPlayer,
       alive: !!state.alive,
@@ -83,9 +105,20 @@ export function buildOrbat(
       regrouped: !!entity.groupName && !!groupName && groupName !== entity.groupName,
     };
 
-    const list = groups.get(groupName);
+    if (!name) {
+      unnamed.push({ group: groupName, member });
+      continue;
+    }
+    const key = `${groupName}\u0000${name}`;
+    const span = entity.endFrame - entity.startFrame;
+    const seen = bySlot.get(key);
+    if (!seen || span > seen.span) bySlot.set(key, { group: groupName, member, span });
+  }
+
+  for (const { group, member } of [...bySlot.values(), ...unnamed]) {
+    const list = groups.get(group);
     if (list) list.push(member);
-    else groups.set(groupName, [member]);
+    else groups.set(group, [member]);
   }
 
   return [...groups.entries()]
@@ -122,20 +155,47 @@ export interface VehicleOccupancy {
 }
 
 /**
+ * Unit ids that belong to a player, optionally narrowed to one side.
+ *
+ * Entity-level only, deliberately: this answers "did a player ever ride this
+ * vehicle", a question about the whole recording, which the per-frame flag can
+ * only answer one frame at a time. Side is read the same way.
+ */
+function playerUnitIds(engine: PlaybackEngine, side?: Side): Set<number> {
+  const ids = new Set<number>();
+  for (const entity of engine.entityManager.getAll()) {
+    if (!(entity instanceof Unit)) continue;
+    if (!entity.isPlayer) continue;
+    if (side && entity.side !== side) continue;
+    ids.add(entity.id);
+  }
+  return ids;
+}
+
+/**
  * Sample who was aboard each vehicle across the whole recording.
  *
  * Sampled rather than per-frame on purpose: a two-hour mission is thousands of
  * frames and the strip is a couple of hundred pixels wide, so reading every
  * frame would cost far more than it could ever show. A vehicle nobody ever
  * boarded is dropped — an empty strip says nothing.
+ *
+ * `playersOnly` keeps only the vehicles a player crewed at some point and
+ * `side` narrows that to one faction, which is what the ORBAT asks for: on a
+ * populated mission the AI motor pool is most of the list and none of the
+ * story. The crew lists themselves stay whole — who a player rode with is
+ * part of it.
  */
 export function buildVehicleOccupancy(
   engine: PlaybackEngine,
   frame: number,
   sampleCount = 160,
+  options: { side?: Side; playersOnly?: boolean } = {},
 ): VehicleOccupancy[] {
   const endFrame = engine.endFrame();
   if (endFrame <= 0) return [];
+
+  const players = options.playersOnly ? playerUnitIds(engine, options.side) : null;
 
   const step = Math.max(1, Math.floor(endFrame / sampleCount));
   const result: VehicleOccupancy[] = [];
@@ -146,6 +206,7 @@ export function buildVehicleOccupancy(
     const samples: CrewSample[] = [];
     let peak = 0;
     let occupiedNow = false;
+    let carriedPlayer = false;
     let nearestDistance = Number.POSITIVE_INFINITY;
 
     for (let f = entity.startFrame; f <= Math.min(entity.endFrame, endFrame); f += step) {
@@ -153,6 +214,7 @@ export function buildVehicleOccupancy(
       const crewIds = state?.crewIds ?? [];
       samples.push({ frame: f, crewIds });
       if (crewIds.length > peak) peak = crewIds.length;
+      if (players && !carriedPlayer) carriedPlayer = crewIds.some((id) => players.has(id));
 
       const distance = Math.abs(f - frame);
       if (distance < nearestDistance) {
@@ -162,6 +224,7 @@ export function buildVehicleOccupancy(
     }
 
     if (peak === 0) continue;
+    if (players && !carriedPlayer) continue;
     result.push({ vehicleId: entity.id, name: entity.name, samples, peak, occupiedNow });
   }
 

@@ -3,7 +3,7 @@ import type { JSX, Accessor } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { Side } from "../../../data/types";
 import { Unit } from "../../../playback/entities/unit";
-import { SIDE_COLORS_UI, SIDE_BG_COLORS } from "../../../config/sideColors";
+import { SIDE_COLORS_UI, SIDE_BG_COLORS, SIDES, SIDE_LABELS } from "../../../config/sideColors";
 import { useEngine } from "../../../hooks/useEngine";
 import { useCustomize } from "../../../hooks/useCustomize";
 import { useI18n } from "../../../hooks/useLocale";
@@ -11,16 +11,6 @@ import { activeSide, setActiveSide } from "../shortcuts";
 import { CrosshairIcon, ChevronRightIcon } from "../../../components/Icons";
 import styles from "./SidePanel.module.css";
 import { PlayerProfileCard } from "./PlayerProfileCard";
-
-const SIDES: Side[] = ["WEST", "EAST", "GUER", "CIV", "VIRTUAL"];
-
-const SIDE_LABELS: Record<Side, string> = {
-  WEST: "BLUFOR",
-  EAST: "OPFOR",
-  GUER: "IND",
-  CIV: "CIV",
-  VIRTUAL: "VIRTUAL",
-};
 
 interface GroupData {
   name: string;

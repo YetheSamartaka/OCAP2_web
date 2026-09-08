@@ -164,6 +164,52 @@ describe("buildOrbat", () => {
     expect(group.alive).toBe(1);
   });
 
+  it("keeps a player whose per-frame flag drops when they die or disconnect", () => {
+    // The recorder keeps writing the body as an AI-flagged unit, and a squad
+    // that empties out over the mission is exactly what the ORBAT must not do.
+    const casualty = unit(1, "Player", "WEST", "Alpha", [
+      state({ groupName: "Alpha", isPlayer: true }),
+      state({ groupName: "Alpha", isPlayer: false, alive: 0 }),
+    ]);
+    const engine = fakeEngine([casualty], 1);
+
+    const group = buildOrbat(engine, "WEST", 1)[0];
+    expect(group.members.map((m) => m.name)).toEqual(["Player"]);
+    expect(group.alive).toBe(0);
+  });
+
+  it("lists a player once when a respawn left two live entities", () => {
+    const abandoned = unit(1, "Player", "WEST", "Alpha", [
+      state({ groupName: "Alpha" }),
+      state({ groupName: "Alpha" }),
+      state({ groupName: "Alpha" }),
+    ]);
+    const respawned = unit(2, "Player", "WEST", "Alpha", [
+      state({ groupName: "Alpha" }),
+      state({ groupName: "Alpha" }),
+    ]);
+    const engine = fakeEngine([abandoned, respawned], 2);
+
+    const group = buildOrbat(engine, "WEST", 1)[0];
+    expect(group.members).toHaveLength(1);
+    // The longer-lived entity is the real slot.
+    expect(group.members[0].unitId).toBe(1);
+  });
+
+  it("comes back empty for a side that has only AI", () => {
+    const states = [state({ groupName: "Alpha" })];
+    const engine = fakeEngine(
+      [
+        unit(1, "Player", "WEST", "Alpha", states),
+        unit(2, "AI One", "EAST", "Bravo", states, { isPlayer: false }),
+        unit(3, "AI Two", "EAST", "Bravo", states, { isPlayer: false }),
+      ],
+      0,
+    );
+
+    expect(buildOrbat(engine, "EAST", 0)).toEqual([]);
+  });
+
   it("keeps the full roster when playersOnly is off", () => {
     const states = [state({ groupName: "Alpha" })];
     const engine = fakeEngine(
@@ -238,6 +284,31 @@ describe("buildVehicleOccupancy", () => {
     expect(occupancy.name).toBe("Truck");
     expect(occupancy.peak).toBe(3);
     expect(occupancy.samples.map((s) => s.crewIds.length)).toEqual([0, 2, 3, 0]);
+  });
+
+  it("keeps only what a player of that side crewed when asked", () => {
+    const truck = new Vehicle(9, "Player Truck", "truck", 0, 1, "truck", [
+      state({ crewIds: [1] }),
+      state({ crewIds: [1] }),
+    ]);
+    const aiTruck = new Vehicle(10, "AI Truck", "truck", 0, 1, "truck", [
+      state({ crewIds: [2] }),
+      state({ crewIds: [2] }),
+    ]);
+    const enemyTruck = new Vehicle(11, "Enemy Truck", "truck", 0, 1, "truck", [
+      state({ crewIds: [3] }),
+      state({ crewIds: [3] }),
+    ]);
+    const driver = unit(1, "Driver", "WEST", "Alpha", [state(), state()]);
+    const ai = unit(2, "AI", "WEST", "Alpha", [state(), state()], { isPlayer: false });
+    const enemy = unit(3, "Enemy", "EAST", "Bravo", [state(), state()]);
+    const engine = fakeEngine([truck, aiTruck, enemyTruck, driver, ai, enemy], 1);
+
+    const names = buildVehicleOccupancy(engine, 0, 2, {
+      side: "WEST",
+      playersOnly: true,
+    }).map((v) => v.name);
+    expect(names).toEqual(["Player Truck"]);
   });
 
   it("reports whether it is occupied at the playhead", () => {

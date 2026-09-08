@@ -1,12 +1,18 @@
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "solid-js";
 
+import type { Side } from "../../../data/types";
 import { useEngine } from "../../../hooks/useEngine";
 import { useI18n } from "../../../hooks/useLocale";
-import { SIDE_COLORS_UI } from "../../../config/sideColors";
+import {
+  SIDE_COLORS_UI,
+  SIDE_BG_COLORS,
+  SIDES,
+  SIDE_LABELS,
+} from "../../../config/sideColors";
 import { formatElapsedTime } from "../../../playback/time";
 import { buildOrbat, buildVehicleOccupancy, isLeader } from "../orbat";
-import { activeSide } from "../shortcuts";
+import { activeSide, setActiveSide } from "../shortcuts";
 import styles from "./OrbatTab.module.css";
 import panel from "./SidePanel.module.css";
 
@@ -17,6 +23,44 @@ export function OrbatTab(): JSX.Element {
   const [chunksReady, setChunksReady] = createSignal(false);
   const [search, setSearch] = createSignal("");
   const query = createMemo(() => search().trim().toLowerCase());
+  /** Set once the faction was chosen here, which stops the auto-pick below. */
+  const [sidePicked, setSidePicked] = createSignal(false);
+
+  /**
+   * Players on a side across the whole recording.
+   *
+   * Entity-level and mission-wide on purpose: it labels the faction tabs and
+   * decides whether a faction has an ORBAT at all, and both questions are about
+   * the recording rather than the frame under the playhead. `getBySide` already
+   * folds a respawn or a reconnect back into one slot.
+   */
+  const playerCount = (side: Side): number => {
+    engine.endFrame();
+    return engine.entityManager.getBySide(side).filter((u) => u.isPlayer).length;
+  };
+
+  /**
+   * Every faction present in the recording, players or not. A faction with only
+   * AI still gets a tab — the roster it opens is empty, and that is the answer
+   * to "who was on this side", not a missing button.
+   */
+  const sides = createMemo<Side[]>(() => {
+    engine.endFrame();
+    return SIDES.filter((side) => engine.entityManager.getBySide(side).length > 0);
+  });
+
+  /**
+   * Open on a faction that has players, since the ORBAT is empty on any other.
+   * Only until the faction is chosen here: after that an empty AI faction is a
+   * deliberate choice and switching away from it would fight the click.
+   */
+  createEffect(() => {
+    if (sidePicked()) return;
+    const withPlayers = sides().filter((side) => playerCount(side) > 0);
+    if (withPlayers.length > 0 && !withPlayers.includes(activeSide())) {
+      setActiveSide(withPlayers[0]);
+    }
+  });
 
   // The vehicle strips span the whole mission, so a chunked recording has to
   // have every chunk in hand. Playback itself only ever loads the chunk under
@@ -46,10 +90,14 @@ export function OrbatTab(): JSX.Element {
     });
   });
 
+  /** Only what the players of this faction rode; the AI motor pool is noise here. */
   const allVehicles = createMemo(() => {
     chunksReady();
     engine.endFrame();
-    return buildVehicleOccupancy(engine, engine.currentFrame());
+    return buildVehicleOccupancy(engine, engine.currentFrame(), 160, {
+      side: activeSide(),
+      playersOnly: true,
+    });
   });
 
   /** Vehicles match on their own name or on anyone who ever crewed them. */
@@ -87,6 +135,33 @@ export function OrbatTab(): JSX.Element {
 
   return (
     <>
+      {/* Faction tabs: every side in the recording, AI-only ones included */}
+      <div class={panel.sideTabs}>
+        <For each={sides()}>
+          {(side) => {
+            const isActive = () => activeSide() === side;
+            return (
+              <button
+                class={panel.sideTab}
+                classList={{ [panel.sideTabActive]: isActive() }}
+                style={{
+                  background: isActive() ? SIDE_BG_COLORS[side] : "transparent",
+                  color: isActive() ? SIDE_COLORS_UI[side] : "var(--text-dimmer)",
+                }}
+                onClick={() => {
+                  setSidePicked(true);
+                  setActiveSide(side);
+                }}
+              >
+                <span class={panel.sideDot} style={{ background: SIDE_COLORS_UI[side] }} />
+                {SIDE_LABELS[side]}
+                <span class={panel.sideCount}>{playerCount(side)}</span>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+
       {/* Search: group, player or vehicle name */}
       <div class={panel.filterBar}>
         <input
@@ -100,14 +175,19 @@ export function OrbatTab(): JSX.Element {
 
       <div class={panel.tabContent}>
       <div class={styles.section}>
-        {t("orbat_groups")} · <span style={{ color: sideColor() }}>{activeSide()}</span>
+        {t("orbat_groups")} ·{" "}
+        <span style={{ color: sideColor() }}>{SIDE_LABELS[activeSide()]}</span>
       </div>
 
       <Show
         when={groups().length > 0}
         fallback={
           <div class={panel.placeholder}>
-            {query() ? t("orbat_no_matches") : t("orbat_no_groups")}
+            {query()
+              ? t("orbat_no_matches")
+              : playerCount(activeSide()) === 0
+                ? t("orbat_no_players")
+                : t("orbat_no_groups")}
           </div>
         }
       >
@@ -167,7 +247,7 @@ export function OrbatTab(): JSX.Element {
           when={vehicles().length > 0}
           fallback={
             <div class={styles.note}>
-              {query() ? t("orbat_no_vehicle_matches") : t("orbat_no_vehicles")}
+              {query() ? t("orbat_no_vehicle_matches") : t("orbat_no_player_vehicles")}
             </div>
           }
         >

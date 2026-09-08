@@ -1,5 +1,17 @@
 import type { Side } from "../data/types";
 
+/** Every side, in the order the UI lists them. */
+export const SIDES: Side[] = ["WEST", "EAST", "GUER", "CIV", "VIRTUAL"];
+
+/** Faction names as a briefing writes them, not the engine's side ids. */
+export const SIDE_LABELS: Record<Side, string> = {
+  WEST: "BLUFOR",
+  EAST: "OPFOR",
+  GUER: "IND",
+  CIV: "CIV",
+  VIRTUAL: "VIRTUAL",
+};
+
 /** Bright colors for UI text (event log, unit list). Keep in sync with --side-* in variables.css */
 export const SIDE_COLORS_BRIGHT: Record<Side, string> = {
   WEST: "#00a8ff",
